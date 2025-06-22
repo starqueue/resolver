@@ -110,6 +110,14 @@ func (a *authenticator) result() (dnssec.AuthenticationResult, dnssec.DenialOfEx
 	return a.auth.Result()
 }
 
+func (a *authenticator) resultTTLAnswer(rtype uint16) (uint32, bool) {
+	return a.auth.ResultTTLAnswer(rtype)
+}
+
+func (a *authenticator) resultTTLAuthority(rtype uint16) (uint32, bool) {
+	return a.auth.ResultTTLAuthority(rtype)
+}
+
 // authZoneWrapper wraps our zone such that is supports the dnssec.Zone interface.
 // Note that the dnssec package only needs querying support against this zone's nameservers.
 // i.e. We do not need to try these queries recursively. If the nameservers for this zone do not return

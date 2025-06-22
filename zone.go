@@ -82,7 +82,7 @@ func (z *zoneImpl) exchange(ctx context.Context, m *dns.Msg) *Response {
 	//---
 
 	if z.pool == nil {
-		return ResponseError(fmt.Errorf("%w [%s]", ErrNoPoolConfiguredForZone, z.zoneName))
+		return newResponseError(fmt.Errorf("%w [%s]", ErrNoPoolConfiguredForZone, z.zoneName))
 	}
 
 	ctx = context.WithValue(ctx, ctxZoneName, z.zoneName)

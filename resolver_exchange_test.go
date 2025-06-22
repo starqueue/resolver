@@ -381,7 +381,6 @@ func TestResolver_ResolveLabel_ErrorFromExchange(t *testing.T) {
 	assert.True(t, r.HasError())
 	assert.ErrorIs(t, r.Err, ErrTest)
 	assert.Equal(t, 1, callsSeen)
-	assert.True(t, r.Msg.RecursionAvailable)
 }
 
 func TestResolver_ResolveLabel_EmptyFromExchange(t *testing.T) {

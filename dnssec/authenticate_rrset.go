@@ -19,6 +19,7 @@ func authenticate(zone string, rrsets []dns.RR, dnskeys []*dns.DNSKEY, section s
 			rtype: rrsig.TypeCovered,
 			rrsig: rrsig,
 			rrset: extractRecordsOfNameAndType(rrsets, rrsig.Header().Name, rrsig.TypeCovered),
+			ttl:   min(rrsig.Header().Ttl, rrsig.OrigTtl),
 		}
 		signatures[i] = &sig
 
@@ -40,6 +41,21 @@ func authenticate(zone string, rrsets []dns.RR, dnskeys []*dns.DNSKEY, section s
 		if dns.CountLabel(rrsig.Header().Name) > int(rrsig.Labels) {
 			sig.wildcard = true
 		}
+
+		//---
+		// TTL cannot be greater than the time left before the signature expires (logic from dns.ValidityPeriod)
+
+		utc := time.Now().UTC().Unix()
+		mode := (int64(rrsig.Expiration) - utc) / year68
+		te := int64(rrsig.Expiration) + mode*year68
+		delta := uint32(te - utc)
+		sig.ttl = min(sig.ttl, delta)
+
+		for _, rr := range sig.rrset {
+			sig.ttl = min(sig.ttl, rr.Header().Ttl)
+		}
+
+		//---
 
 		// Iterate over all the DNS keys to see if one matches the signature.
 		for _, key := range dnskeys {
@@ -96,7 +112,7 @@ func authenticate(zone string, rrsets []dns.RR, dnskeys []*dns.DNSKEY, section s
 			continue
 		}
 
-		// We _typically_ don't sign NS records in the authority section, but ir can happen:
+		// We _typically_ don't sign NS records in the authority section, but it can happen:
 		// `dig @l.gtld-servers.net. naughty-nameserver.com. DS +dnssec`
 		if section == authoritySection && rrset.Header().Rrtype == dns.TypeNS {
 			// We check and see if we have any signatures for the NS record. If we do, we count the combination.

@@ -12,9 +12,9 @@ func (pool *nameserverPool) exchange(ctx context.Context, m *dns.Msg) *Response 
 
 	if !hasIPv4 && !hasIPv6 {
 		if z, ok := ctx.Value(ctxZoneName).(string); ok {
-			return ResponseError(fmt.Errorf("%w [%s]", ErrNoPoolConfiguredForZone, z))
+			return newResponseError(fmt.Errorf("%w [%s]", ErrNoPoolConfiguredForZone, z))
 		}
-		return ResponseError(ErrNoPoolConfiguredForZone)
+		return newResponseError(ErrNoPoolConfiguredForZone)
 	}
 
 	//---

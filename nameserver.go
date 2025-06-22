@@ -50,7 +50,7 @@ func (nameserver *nameserver) exchange(ctx context.Context, m *dns.Msg) *Respons
 	}
 
 	if m == nil {
-		return ResponseError(fmt.Errorf("%w in zone [%s]", ErrNilMessageSentToExchange, zoneName))
+		return newResponseError(fmt.Errorf("%w in zone [%s]", ErrNilMessageSentToExchange, zoneName))
 	}
 
 	// Formats correctly for both ipv4 and ipv6.

@@ -52,6 +52,7 @@ type signature struct {
 
 	name  string
 	rtype uint16
+	ttl   uint32
 
 	key   *dns.DNSKEY
 	rrsig *dns.RRSIG

@@ -11,7 +11,7 @@ type Response struct {
 	Msg      *dns.Msg
 	Err      error
 	Duration time.Duration
-	Deo      dnssec.DenialOfExistenceState
+	Doe      dnssec.DenialOfExistenceState
 	Auth     dnssec.AuthenticationResult
 }
 
@@ -30,7 +30,7 @@ func (r *Response) truncated() bool {
 	return r.Msg.Truncated
 }
 
-func ResponseError(err error) *Response {
+func newResponseError(err error) *Response {
 	return &Response{
 		Err: err,
 	}

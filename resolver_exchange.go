@@ -14,12 +14,18 @@ import (
 
 func (resolver *Resolver) Exchange(ctx context.Context, qmsg *dns.Msg) *Response {
 	if !qmsg.RecursionDesired {
-		return ResponseError(ErrNotRecursionDesired)
+		return newResponseError(ErrNotRecursionDesired)
 	}
 
 	// We'll copy the message we'll likely want to mutate some values.
 	// And it might be confusing to the caller if the values in their instance change.
-	return resolver.exchange(ctx, qmsg.Copy())
+	response := resolver.exchange(ctx, qmsg.Copy())
+
+	if !response.IsEmpty() {
+		response.Msg.RecursionAvailable = true
+	}
+
+	return response
 }
 
 func (resolver *Resolver) exchange(ctx context.Context, qmsg *dns.Msg) *Response {
@@ -91,7 +97,7 @@ func (resolver *Resolver) exchange(ctx context.Context, qmsg *dns.Msg) *Response
 
 	// Wind past all the zones that we already know about (if any).
 	if err := d.windTo(knownZones[0].name()); err != nil {
-		return ResponseError(err)
+		return newResponseError(err)
 	}
 
 	var response *Response
@@ -101,7 +107,7 @@ func (resolver *Resolver) exchange(ctx context.Context, qmsg *dns.Msg) *Response
 
 	for ; d.more(); d.next() {
 		if counter.Add(1) > MaxQueriesPerRequest {
-			return ResponseError(fmt.Errorf("%w. value is currently set to: %d", ErrMaxQueriesPerRequestReached, MaxQueriesPerRequest))
+			return newResponseError(fmt.Errorf("%w. value is currently set to: %d", ErrMaxQueriesPerRequestReached, MaxQueriesPerRequest))
 		}
 
 		c := d.current()
@@ -121,13 +127,13 @@ func (resolver *Resolver) exchange(ctx context.Context, qmsg *dns.Msg) *Response
 		}
 	}
 
-	return ResponseError(ErrUnableToResolveAnswer)
+	return newResponseError(ErrUnableToResolveAnswer)
 }
 
 func (resolver *Resolver) resolveLabel(ctx context.Context, d *domain, z zone, qmsg *dns.Msg, auth *authenticator) (zone, *Response) {
 	if z == nil {
 		// We must have a zone passed.
-		return nil, ResponseError(fmt.Errorf("%w: zone cannot be nil", ErrInternalError))
+		return nil, newResponseError(fmt.Errorf("%w: zone cannot be nil", ErrInternalError))
 	}
 
 	if auth != nil {
@@ -137,16 +143,12 @@ func (resolver *Resolver) resolveLabel(ctx context.Context, d *domain, z zone, q
 
 	response := z.exchange(ctx, qmsg)
 
-	if !response.IsEmpty() {
-		response.Msg.RecursionAvailable = true
-	}
-
 	if response.HasError() {
 		return nil, response
 	}
 
 	if response.IsEmpty() {
-		return nil, ResponseError(fmt.Errorf("%w - without an error. mysterious", ErrEmptyResponse))
+		return nil, newResponseError(fmt.Errorf("%w - without an error. mysterious", ErrEmptyResponse))
 	}
 
 	//---
@@ -243,7 +245,7 @@ func (resolver *Resolver) processDelegation(ctx context.Context, z zone, rmsg *d
 
 	newZone, err := resolver.funcs.createZone(ctx, nextZoneName, z.name(), nameservers, rmsg.Extra, resolver.funcs.getExchanger())
 	if err != nil {
-		return nil, ResponseError(err)
+		return nil, newResponseError(err)
 	}
 
 	resolver.zones.add(newZone)
@@ -254,8 +256,59 @@ func (resolver *Resolver) processDelegation(ctx context.Context, z zone, rmsg *d
 func (resolver *Resolver) finaliseResponse(ctx context.Context, auth *authenticator, qmsg *dns.Msg, response *Response) *Response {
 	if auth != nil {
 		authTime := time.Now()
-		response.Auth, response.Deo, response.Err = auth.result()
-		Info(fmt.Sprintf("DNSSEC took %s to return an answer of %s and DOE %s", time.Since(authTime), response.Auth.String(), response.Deo.String()))
+		response.Auth, response.Doe, response.Err = auth.result()
+		Info(fmt.Sprintf("DNSSEC took %s to return an answer of %s and DOE %s", time.Since(authTime), response.Auth.String(), response.Doe.String()))
+
+		/*
+			   If the resolver accepts the RRset as authentic, the validator MUST
+			   set the TTL of the RRSIG RR and each RR in the authenticated RRset to
+			   a value no greater than the minimum of:
+			   o  the RRset's TTL as received in the response;
+			   o  the RRSIG RR's TTL as received in the response;
+			   o  the value in the RRSIG RR's Original TTL field; and
+			   o  the difference of the RRSIG RR's Signature Expiration time and the
+				  current time.
+		*/
+
+		type rrtypeTTL struct {
+			ttl   uint32
+			found bool
+		}
+
+		// Cache the values so we don't need to recalculate them each time.
+		ttls := make(map[uint16]rrtypeTTL)
+
+		if response.Auth == dnssec.Secure {
+			for _, rr := range response.Msg.Answer {
+				rtypeTTL, found := ttls[rr.Header().Rrtype]
+
+				if !found {
+					ttl, found := auth.resultTTLAnswer(rr.Header().Rrtype)
+					rtypeTTL = rrtypeTTL{ttl, found}
+					ttls[rr.Header().Rrtype] = rtypeTTL
+				}
+
+				if rtypeTTL.found {
+					rr.Header().Ttl = min(rtypeTTL.ttl, rr.Header().Ttl)
+				}
+			}
+
+			clear(ttls)
+
+			for _, rr := range response.Msg.Ns {
+				rtypeTTL, found := ttls[rr.Header().Rrtype]
+
+				if !found {
+					ttl, found := auth.resultTTLAuthority(rr.Header().Rrtype)
+					rtypeTTL = rrtypeTTL{ttl, found}
+					ttls[rr.Header().Rrtype] = rtypeTTL
+				}
+
+				if rtypeTTL.found {
+					rr.Header().Ttl = min(rtypeTTL.ttl, rr.Header().Ttl)
+				}
+			}
+		}
 	}
 
 	//---
@@ -312,17 +365,6 @@ func (resolver *Resolver) finaliseResponse(ctx context.Context, auth *authentica
 	}
 
 	if auth != nil {
-		/*
-			TODO
-			   If the resolver accepts the RRset as authentic, the validator MUST
-			   set the TTL of the RRSIG RR and each RR in the authenticated RRset to
-			   a value no greater than the minimum of:
-			   o  the RRset's TTL as received in the response;
-			   o  the RRSIG RR's TTL as received in the response;
-			   o  the value in the RRSIG RR's Original TTL field; and
-			   o  the difference of the RRSIG RR's Signature Expiration time and the
-			      current time.
-		*/
 
 		if !qmsg.CheckingDisabled {
 			response.Msg.AuthenticatedData = response.Auth == dnssec.Secure

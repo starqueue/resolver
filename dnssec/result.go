@@ -1,6 +1,8 @@
 package dnssec
 
-import "github.com/miekg/dns"
+import (
+	"github.com/miekg/dns"
+)
 
 func (a *Authenticator) Result() (AuthenticationResult, DenialOfExistenceState, error) {
 
@@ -107,4 +109,56 @@ func (a *Authenticator) Result() (AuthenticationResult, DenialOfExistenceState, 
 
 	// We default to worse case.
 	return Bogus, last.denialOfExistence, last.err
+}
+
+/*
+   If the resolver accepts the RRset as authentic, the validator MUST
+   set the TTL of the RRSIG RR and each RR in the authenticated RRset to
+   a value no greater than the minimum of:
+   o  the RRset's TTL as received in the response;
+   o  the RRSIG RR's TTL as received in the response;
+   o  the value in the RRSIG RR's Original TTL field; and
+   o  the difference of the RRSIG RR's Signature Expiration time and the current time.
+*/
+
+// ResultTTLAnswer takes a record type, and returns the TTL that should be applied to that record, based on the above.
+func (a *Authenticator) ResultTTLAnswer(rtype uint16) (uint32, bool) {
+
+	if len(a.results) == 0 {
+		return 0, false
+	}
+
+	last := a.results[len(a.results)-1]
+
+	return resultTTL(rtype, last.answer)
+}
+
+func (a *Authenticator) ResultTTLAuthority(rtype uint16) (uint32, bool) {
+
+	if len(a.results) == 0 {
+		return 0, false
+	}
+
+	last := a.results[len(a.results)-1]
+
+	return resultTTL(rtype, last.authority)
+}
+
+func resultTTL(rtype uint16, ss signatures) (uint32, bool) {
+
+	found := false
+	ttl := MaxAllowedTTL
+
+	for _, sig := range ss {
+		if sig.rtype == rtype && sig.verified {
+			found = true
+			ttl = min(ttl, sig.ttl)
+		}
+	}
+
+	if !found {
+		return 0, false
+	}
+
+	return ttl, true
 }

@@ -2,7 +2,7 @@ package resolver
 
 import (
 	"fmt"
-	"net"
+	"github.com/miekg/dns"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -26,10 +26,16 @@ func IPv6Available() bool {
 	return false
 }
 
+// UpdateIPv6Availability sense checks if we can get a DNS response from an IPv6 address.
 func UpdateIPv6Availability() {
 	defer ipv6Answered.Store(true)
 
-	// TODO: This needs to be better. I need to make sure I can actually talk to the server.
+	msg := new(dns.Msg)
+	msg.SetQuestion(".", dns.TypeNS)
+
+	client := &dns.Client{
+		Timeout: 500 * time.Millisecond,
+	}
 
 	// Tries:
 	// 	k.root-servers.net
@@ -37,12 +43,10 @@ func UpdateIPv6Availability() {
 	// 	a.root-servers.net.
 	for _, address := range []string{"2001:7fd::1", "2001:500:a8::e", "2001:503:ba3e::2:30"} {
 		ipv6Address := fmt.Sprintf("[%s]:53", address)
-		timeout := 1 * time.Second
 
-		conn, err := net.DialTimeout("udp6", ipv6Address, timeout)
+		_, _, err := client.Exchange(msg, ipv6Address)
 		ipv6Available.Store(err == nil)
 		if err == nil {
-			conn.Close()
 			return
 		}
 	}

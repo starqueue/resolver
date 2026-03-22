@@ -21,8 +21,11 @@ func IPv6Available() bool {
 	if ipv6Answered.Load() {
 		return ipv6Available.Load()
 	}
-	// Trigger the check if it hasn't started yet, but don't block.
-	go ipv6Check.Do(UpdateIPv6Availability)
+	// Trigger the check exactly once. sync.Once ensures only one goroutine
+	// runs the check; subsequent calls return immediately without spawning.
+	ipv6Check.Do(func() {
+		go UpdateIPv6Availability()
+	})
 	// Return current best-known value (may be false if check is still running).
 	return ipv6Available.Load()
 }

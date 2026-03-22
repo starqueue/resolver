@@ -46,7 +46,10 @@ func verifyDNSKEYs(ctx context.Context, r *result, keys []dns.RR, dsRecordsFromP
 	}
 
 	if len(keySigningKeys) == 0 {
-		return Insecure, ErrKeysNotFound
+		// Per RFC 4035: if DS records exist but no DNSKEY matches, the chain is broken.
+		// This should be Bogus, not Insecure, since Insecure means the parent explicitly
+		// indicated no DNSSEC (no DS records). A mismatch indicates misconfiguration or attack.
+		return Bogus, ErrKeySigningKeysNotFound
 	}
 
 	//---

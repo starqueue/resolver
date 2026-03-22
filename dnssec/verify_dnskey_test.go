@@ -34,7 +34,8 @@ func TestVerify_DNSKEYs(t *testing.T) {
 
 	//---
 
-	// If keys are passed in, but none of them have an associated DS record from the parent, the answer must be insecure.
+	// If keys are passed in, but none of them have an associated DS record from the parent,
+	// the answer must be Bogus (DS records exist but no DNSKEY matches = broken chain).
 
 	keys = []dns.RR{k.key}
 
@@ -45,10 +46,10 @@ func TestVerify_DNSKEYs(t *testing.T) {
 
 	state, err = verifyDNSKEYs(ctx, r, keys, dsRecordsFromParent)
 	if err == nil {
-		t.Errorf("verifyDNSKEYs returned no error. expected ErrKeysNotFound")
+		t.Errorf("verifyDNSKEYs returned no error. expected ErrKeySigningKeysNotFound")
 	}
-	if state != Insecure {
-		t.Errorf("verifyDNSKEYs returned incorrect state. expected %v, got %v", Insecure, state)
+	if state != Bogus {
+		t.Errorf("verifyDNSKEYs returned incorrect state. expected %v, got %v", Bogus, state)
 	}
 
 	//---

@@ -67,10 +67,16 @@ func (z *zoneImpl) exchange(ctx context.Context, m *dns.Msg) *Response {
 			Warn(fmt.Errorf("error trying to perform a cache lookup for zone [%s]: %w", z.zoneName, err).Error())
 		} else if msg != nil {
 			trace, _ := ctx.Value(CtxTrace).(*Trace)
+			shortId := "unknown"
+			iteration := uint32(0)
+			if trace != nil {
+				shortId = trace.ShortID()
+				iteration = trace.Iteration()
+			}
 			Query(fmt.Sprintf(
 				"%s-%d: response for [%s] %s in zone [%s] found in cache",
-				trace.ShortID(),
-				trace.Iteration(),
+				shortId,
+				iteration,
 				m.Question[0].Name,
 				TypeToString(m.Question[0].Qtype),
 				z.zoneName,

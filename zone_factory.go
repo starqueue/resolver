@@ -71,15 +71,23 @@ func enrichPool(ctx context.Context, zoneName string, pool *nameserverPool, exch
 
 	//---
 
-	done := make(chan bool)
+	enrichCtx, enrichCancel := context.WithTimeout(ctx, 3*time.Second)
+	defer enrichCancel()
+
+	done := make(chan bool, 1)
 	go func() {
 		doneCalled := false
 		for _, t := range types {
 			for _, domain := range hosts {
+				// Check if we've been cancelled before making another query.
+				if enrichCtx.Err() != nil {
+					return
+				}
+
 				qmsg := new(dns.Msg)
 				qmsg.SetQuestion(dns.Fqdn(domain), t)
 
-				response := exchanger.exchange(ctx, qmsg)
+				response := exchanger.exchange(enrichCtx, qmsg)
 				if !response.HasError() && !response.IsEmpty() && len(response.Msg.Answer) > 0 {
 					// enrich if the response is good.
 					pool.enrich(response.Msg.Answer)
@@ -100,7 +108,7 @@ func enrichPool(ctx context.Context, zoneName string, pool *nameserverPool, exch
 		default:
 			return fmt.Errorf("%w [%s]: the nameserver pool still not primed after enrichment", ErrFailedEnrichingPool, zoneName)
 		}
-	case <-time.After(3 * time.Second):
+	case <-enrichCtx.Done():
 		return fmt.Errorf("%w [%s]: enrichment timeout", ErrFailedEnrichingPool, zoneName)
 	}
 

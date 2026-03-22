@@ -22,8 +22,9 @@ type nameserver struct {
 
 	dnsClientFactory dnsClientFactory
 
-	udpClient dnsClient
-	tcpClient dnsClient
+	clientLock sync.Mutex
+	udpClient  dnsClient
+	tcpClient  dnsClient
 
 	metricsLock         sync.Mutex
 	numberOfRequests    uint32
@@ -42,6 +43,9 @@ func (*nameserver) defaultDnsClientFactory(protocol string) dnsClient {
 }
 
 func (nameserver *nameserver) getClient(protocol string) dnsClient {
+	nameserver.clientLock.Lock()
+	defer nameserver.clientLock.Unlock()
+
 	if protocol == "udp" {
 		if nameserver.udpClient == nil {
 			factory := nameserver.defaultDnsClientFactory

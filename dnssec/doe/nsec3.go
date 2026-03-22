@@ -61,6 +61,14 @@ func (doe *DenialOfExistenceNSEC3) PerformExpandedWildcardProof(wildcardAnswerSi
 	labelIndexs := dns.Split(wildcardAnswerSignatureName)
 	closestEncloserIndex := len(labelIndexs) - int(wildcardAnswerSignatureNameLabels)
 
+	// Bounds check to prevent index-out-of-range panic when label count matches the full name.
+	if closestEncloserIndex < 0 || closestEncloserIndex >= len(labelIndexs) {
+		return false
+	}
+	if closestEncloserIndex-1 < 0 {
+		return false
+	}
+
 	// The immediate ancestor of the wildcard
 	closestEncloser := wildcardAnswerSignatureName[labelIndexs[closestEncloserIndex]:]
 

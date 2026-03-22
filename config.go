@@ -2,6 +2,7 @@ package resolver
 
 import (
 	"github.com/nsmithuk/resolver/dnssec"
+	"sync"
 	"time"
 )
 
@@ -22,6 +23,12 @@ const (
 	DefaultTimeoutUDP = 500 * time.Millisecond
 	DefaultTimeoutTCP = 2000 * time.Millisecond
 )
+
+// ConfigMu protects all package-level configuration variables from concurrent access.
+// Callers modifying configuration while queries are in flight must hold ConfigMu.Lock().
+// Reading configuration from query paths uses ConfigMu.RLock() internally.
+// For best results, set all configuration before creating any Resolver instances.
+var ConfigMu sync.RWMutex
 
 var (
 	// MaxAllowedTTL define the maximum TTL that we'll cache any record for. This overrides any TTLs set by records

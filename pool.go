@@ -91,6 +91,10 @@ func (pool *nameserverPool) expired() bool {
 }
 
 func (pool *nameserverPool) status() NameserverPoolStatus {
+	if pool.expired() {
+		return PoolExpired
+	}
+
 	pool.updating.RLock()
 	defer pool.updating.RUnlock()
 

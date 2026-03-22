@@ -58,6 +58,7 @@ func (doe *DenialOfExistenceNSEC) verifyWildcardCovered(qname string) bool {
 }
 
 func (doe *DenialOfExistenceNSEC) TypeBitMapContainsAnyOf(name string, types []uint16) (nameSeen, typeSeen bool) {
+	name = dns.CanonicalName(name)
 
 	for _, nsec := range doe.records {
 		if name != dns.CanonicalName(nsec.Header().Name) {

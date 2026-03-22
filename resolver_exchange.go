@@ -255,6 +255,17 @@ func (resolver *Resolver) processDelegation(ctx context.Context, z zone, rmsg *d
 		}
 	}
 
+	// Validate that the delegation is not skipping too many levels.
+	// A delegation should ideally be to an immediate child zone. Delegations that skip
+	// more than 3 levels are suspicious and could indicate an attempt to bypass
+	// intermediate DNSSEC chains.
+	labelDiff := dns.CountLabel(nextZoneName) - dns.CountLabel(z.name())
+	if labelDiff > 3 {
+		return nil, &Response{
+			Err: fmt.Errorf("%w: delegation from [%s] to [%s] skips %d levels", ErrNextNameserversNotFound, z.name(), nextZoneName, labelDiff),
+		}
+	}
+
 	newZone, err := resolver.funcs.createZone(ctx, nextZoneName, z.name(), nameservers, rmsg.Extra, resolver.funcs.getExchanger())
 	if err != nil {
 		return nil, newResponseError(err)

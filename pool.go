@@ -22,11 +22,11 @@ type nameserverPool struct {
 	hostsWithoutAddresses []string
 
 	ipv4      []exchanger
-	ipv4Next  atomic.Uint32
+	ipv4Next  atomic.Uint32 // Round-robin counter; wraps at MaxUint32, handled by modulo operation.
 	ipv4Count atomic.Uint32
 
 	ipv6      []exchanger
-	ipv6Next  atomic.Uint32
+	ipv6Next  atomic.Uint32 // Round-robin counter; wraps at MaxUint32, handled by modulo operation.
 	ipv6Count atomic.Uint32
 
 	updating sync.RWMutex

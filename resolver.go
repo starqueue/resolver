@@ -2,6 +2,7 @@ package resolver
 
 import (
 	"context"
+	"fmt"
 	"github.com/miekg/dns"
 	"strings"
 )
@@ -22,11 +23,25 @@ type resolverFunctions struct {
 	getExchanger         func() exchanger
 }
 
+// NewResolver creates a new Resolver with the root zone pre-configured.
+// It panics if the embedded root zone data cannot be parsed, which should never happen
+// in production since the data is statically embedded. If you need error handling during
+// initialization, use NewResolverWithError() instead.
 func NewResolver() *Resolver {
+	r, err := NewResolverWithError()
+	if err != nil {
+		panic(err)
+	}
+	return r
+}
+
+// NewResolverWithError creates a new Resolver, returning an error instead of panicking
+// if initialization fails. This is preferred in contexts where graceful error handling
+// is needed.
+func NewResolverWithError() (*Resolver, error) {
 	pool, err := buildRootServerPool()
 	if err != nil {
-		// Everything is technically static at this point.
-		panic(err)
+		return nil, fmt.Errorf("failed to build root server pool: %w", err)
 	}
 
 	z := new(zones)
@@ -50,7 +65,7 @@ func NewResolver() *Resolver {
 		getExchanger:         resolver.getExchanger,
 	}
 
-	return resolver
+	return resolver, nil
 }
 
 func (resolver *Resolver) getExchanger() exchanger {

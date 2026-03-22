@@ -53,16 +53,14 @@ func (pool *nameserverPool) countIPv6() uint32 {
 
 func (pool *nameserverPool) getIPv4() exchanger {
 	if pool.hasIPv4() {
-		// Increments to the next server each time.
-		// There's a race condition here, but the outcome isn't "important" enough to warrant locking.
-		ipv4Next := pool.ipv4Next.Load() % pool.countIPv4()
-		pool.ipv4Next.Store(ipv4Next + 1)
-
-		var ex exchanger
 		pool.updating.RLock()
-		if int(ipv4Next) < len(pool.ipv4) {
-			ex = pool.ipv4[ipv4Next]
+		count := uint32(len(pool.ipv4))
+		if count == 0 {
+			pool.updating.RUnlock()
+			return nil
 		}
+		ipv4Next := (pool.ipv4Next.Add(1) - 1) % count
+		ex := pool.ipv4[ipv4Next]
 		pool.updating.RUnlock()
 		return ex
 	}
@@ -71,16 +69,14 @@ func (pool *nameserverPool) getIPv4() exchanger {
 
 func (pool *nameserverPool) getIPv6() exchanger {
 	if pool.hasIPv6() {
-		// Increments to the next server each time.
-		// There's a race condition here, but the outcome isn't "important" enough to warrant locking.
-		ipv6Next := pool.ipv6Next.Load() % pool.countIPv6()
-		pool.ipv6Next.Store(ipv6Next + 1)
-
-		var ex exchanger
 		pool.updating.RLock()
-		if int(ipv6Next) < len(pool.ipv6) {
-			ex = pool.ipv6[ipv6Next]
+		count := uint32(len(pool.ipv6))
+		if count == 0 {
+			pool.updating.RUnlock()
+			return nil
 		}
+		ipv6Next := (pool.ipv6Next.Add(1) - 1) % count
+		ex := pool.ipv6[ipv6Next]
 		pool.updating.RUnlock()
 		return ex
 	}

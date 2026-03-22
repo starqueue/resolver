@@ -28,6 +28,11 @@ func authenticate(zone string, rrsets []dns.RR, dnskeys []*dns.DNSKEY, section s
 			continue
 		}
 
+		// Per RFC 4034 Section 3.1.3: The Labels field specifies the number of labels in the
+		// original owner name, excluding the root label and any wildcard label. dns.CountLabel
+		// counts the same way (excludes root label). For wildcard-expanded names, CountLabel
+		// returns labels including the wildcard label, which will be greater than rrsig.Labels.
+		// This check correctly identifies when the owner name has fewer labels than claimed.
 		if dns.CountLabel(rrsig.Header().Name) < int(rrsig.Labels) {
 			sig.err = fmt.Errorf("%w: owner name has %d labels and the rrsig labels field is %d", ErrInvalidLabelCount, dns.CountLabel(rrsig.Header().Name), rrsig.Labels)
 			continue

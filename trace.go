@@ -18,7 +18,12 @@ func NewTrace() *Trace {
 }
 
 func newTraceWithStart(start time.Time) *Trace {
-	id, _ := uuid.NewV7()
+	id, err := uuid.NewV7()
+	if err != nil {
+		// If UUID generation fails (e.g., clock issues), use a random UUID as fallback
+		// to ensure trace correlation is still possible.
+		id = uuid.New()
+	}
 	trace := &Trace{
 		Id:    id,
 		Start: start,

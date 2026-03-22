@@ -14,16 +14,17 @@ var ipv6Answered atomic.Bool
 var ipv6Available atomic.Bool
 
 // IPv6Available return true if IPv6 Internet connectivity is found.
-// If the check has not been performed, it won't block, and (initially) will return false.
+// On first call, triggers the check asynchronously and returns false.
+// Subsequent calls return the cached result once the check completes.
+// Note: the first few queries after startup may not use IPv6 even if available.
 func IPv6Available() bool {
 	if ipv6Answered.Load() {
 		return ipv6Available.Load()
 	}
-	if ipv6Available.Load() {
-		return true
-	}
+	// Trigger the check if it hasn't started yet, but don't block.
 	go ipv6Check.Do(UpdateIPv6Availability)
-	return false
+	// Return current best-known value (may be false if check is still running).
+	return ipv6Available.Load()
 }
 
 // UpdateIPv6Availability sense checks if we can get a DNS response from an IPv6 address.

@@ -28,9 +28,9 @@ type zoneImpl struct {
 	pool  expiringExchanger
 	calls atomic.Uint64
 
-	dnskeyRecords []dns.RR
-	dnskeyExpiry  time.Time
-	dnskeyLock    sync.Mutex
+	dnskeyRecords atomic.Value // stores []dns.RR
+	dnskeyExpiry  atomic.Int64 // unix timestamp
+	dnskeyLock    sync.Mutex   // only held during fetch, not reads
 }
 
 func (z *zoneImpl) name() string {
@@ -138,12 +138,22 @@ func (z *zoneImpl) soa(ctx context.Context, name string) (*dns.SOA, error) {
 }
 
 func (z *zoneImpl) dnskeys(ctx context.Context) ([]dns.RR, error) {
+	// Fast path: check expiry atomically without locking.
+	if exp := z.dnskeyExpiry.Load(); exp > 0 && exp > time.Now().Unix() {
+		if records, ok := z.dnskeyRecords.Load().([]dns.RR); ok {
+			return records, nil
+		}
+	}
+
+	// Slow path: fetch under lock, but only one goroutine fetches at a time.
 	z.dnskeyLock.Lock()
 	defer z.dnskeyLock.Unlock()
 
-	// We base this check on the expiry only, as `z.dnskeyRecords` can be both nil and valid.
-	if !z.dnskeyExpiry.IsZero() && !z.dnskeyExpiry.Before(time.Now()) {
-		return z.dnskeyRecords, nil
+	// Re-check after acquiring lock — another goroutine may have fetched while we waited.
+	if exp := z.dnskeyExpiry.Load(); exp > 0 && exp > time.Now().Unix() {
+		if records, ok := z.dnskeyRecords.Load().([]dns.RR); ok {
+			return records, nil
+		}
 	}
 
 	msg := new(dns.Msg)
@@ -160,21 +170,23 @@ func (z *zoneImpl) dnskeys(ctx context.Context) ([]dns.RR, error) {
 
 	if len(response.Msg.Answer) == 0 {
 		// If we got no answer, we'll put a short cache on that, rather than the MaxAllowedTTL.
-		z.dnskeyExpiry = time.Now().Add(time.Second * 60)
+		z.dnskeyRecords.Store([]dns.RR(nil))
+		z.dnskeyExpiry.Store(time.Now().Add(time.Second * 60).Unix())
 		return nil, nil
 	}
 
-	// Store and return a copy of the records to prevent callers from seeing
-	// a partially-updated slice if another goroutine overwrites dnskeyRecords.
 	records := make([]dns.RR, len(response.Msg.Answer))
 	copy(records, response.Msg.Answer)
-	z.dnskeyRecords = records
 
 	var ttl = MaxAllowedTTL
-	for _, rr := range z.dnskeyRecords {
+	for _, rr := range records {
 		ttl = min(ttl, rr.Header().Ttl)
 	}
-	z.dnskeyExpiry = time.Now().Add(time.Duration(ttl) * time.Second)
 
-	return z.dnskeyRecords, nil
+	// Store records first, then expiry — readers check expiry first,
+	// so they'll always see valid records when expiry is set.
+	z.dnskeyRecords.Store(records)
+	z.dnskeyExpiry.Store(time.Now().Add(time.Duration(ttl) * time.Second).Unix())
+
+	return records, nil
 }

@@ -84,17 +84,38 @@ func (zones *zones) add(z zone) {
 		zones.zones = make(map[string]zone)
 	}
 	zones.zones[name] = z
+	needsCleanup := len(zones.zones) > 0 && len(zones.zones)%100 == 0
+	zones.lock.Unlock()
 
-	// Periodically clean up expired zones to prevent unbounded memory growth.
-	// We do this every 100 additions to amortize the cost.
-	if len(zones.zones) > 0 && len(zones.zones)%100 == 0 {
-		for k, v := range zones.zones {
-			if v.expired() {
-				delete(zones.zones, k)
-			}
+	// Run cleanup outside the lock to avoid blocking readers.
+	if needsCleanup {
+		zones.cleanup()
+	}
+}
+
+// cleanup removes expired zones. Acquires write lock only for the
+// delete phase, after collecting expired keys with a read lock.
+func (zones *zones) cleanup() {
+	zones.lock.RLock()
+	var expired []string
+	for k, v := range zones.zones {
+		if v.expired() {
+			expired = append(expired, k)
 		}
 	}
+	zones.lock.RUnlock()
 
+	if len(expired) == 0 {
+		return
+	}
+
+	zones.lock.Lock()
+	for _, k := range expired {
+		// Re-check under write lock — zone may have been replaced.
+		if v, ok := zones.zones[k]; ok && v.expired() {
+			delete(zones.zones, k)
+		}
+	}
 	zones.lock.Unlock()
 }
 

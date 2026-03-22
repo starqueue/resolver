@@ -214,9 +214,11 @@ func (doe *DenialOfExistenceNSEC3) FindClosestEncloser(qname string) (string, st
 
 	contender := contenders[0]
 
-	// The closest encloser is the result with the longest name.
+	// The closest encloser is the result with the most labels (deepest in the hierarchy).
+	// We use label count rather than string length to correctly handle internationalized
+	// domain names where byte length may not correlate with hierarchical depth.
 	for i := 1; i < len(contenders); i++ {
-		if len(contenders[i].ce) > len(contender.ce) {
+		if dns.CountLabel(contenders[i].ce) > dns.CountLabel(contender.ce) {
 			contender = contenders[i]
 		}
 	}

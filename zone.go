@@ -163,7 +163,11 @@ func (z *zoneImpl) dnskeys(ctx context.Context) ([]dns.RR, error) {
 		return nil, nil
 	}
 
-	z.dnskeyRecords = response.Msg.Answer
+	// Store and return a copy of the records to prevent callers from seeing
+	// a partially-updated slice if another goroutine overwrites dnskeyRecords.
+	records := make([]dns.RR, len(response.Msg.Answer))
+	copy(records, response.Msg.Answer)
+	z.dnskeyRecords = records
 
 	var ttl = MaxAllowedTTL
 	for _, rr := range z.dnskeyRecords {

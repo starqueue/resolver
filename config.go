@@ -22,6 +22,12 @@ const (
 
 	DefaultTimeoutUDP = 500 * time.Millisecond
 	DefaultTimeoutTCP = 2000 * time.Millisecond
+
+	// DefaultMinZoneTTL is the minimum TTL for zone delegation cache entries.
+	// Hot zones like .com. and .net. may have short NS TTLs (e.g. 172800s / 48h),
+	// but under high throughput, re-resolving these zones wastes outbound queries.
+	// This floor ensures frequently-used zones stay cached for at least this long.
+	DefaultMinZoneTTL = uint32(3600) // 1 hour
 )
 
 // ConfigMu protects all package-level configuration variables from concurrent access.
@@ -64,6 +70,10 @@ var (
 	// with downstream caching resolvers at the cost of larger response sizes.
 	RemoveAuthoritySectionForPositiveAnswers  = DefaultRemoveAuthoritySectionForPositiveAnswers
 	RemoveAdditionalSectionForPositiveAnswers = DefaultRemoveAdditionalSectionForPositiveAnswers
+
+	// MinZoneTTL is the minimum TTL applied to zone delegation cache entries.
+	// Zones with NS TTLs shorter than this are cached for MinZoneTTL instead.
+	MinZoneTTL = DefaultMinZoneTTL
 )
 
 //---

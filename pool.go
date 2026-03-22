@@ -175,6 +175,10 @@ func newNameserverPool(nameservers []*dns.NS, extra []dns.RR) *nameserverPool {
 	pool.ipv4Servers.Store(ipv4)
 	pool.ipv6Servers.Store(ipv6)
 
+	// Enforce minimum zone TTL so hot zones stay cached longer.
+	if ttl < MinZoneTTL {
+		ttl = MinZoneTTL
+	}
 	expires := time.Now().Add(time.Duration(ttl) * time.Second)
 	pool.expires.Store(expires.Unix())
 

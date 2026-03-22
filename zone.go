@@ -98,14 +98,14 @@ func (z *zoneImpl) exchange(ctx context.Context, m *dns.Msg) *Response {
 	//---
 
 	if Cache != nil && !response.IsEmpty() && !response.HasError() {
-		go func(zone string, question dns.Question, msg *dns.Msg) {
-			// We never cache OPT records.
-			msg.Extra = removeRecordsOfType(msg.Extra, dns.TypeOPT)
-
-			if err := Cache.Update(zone, question, msg); err != nil {
-				Warn(fmt.Errorf("error trying to perform a cache update for zone [%s]: %w", z.zoneName, err).Error())
-			}
-		}(z.zoneName, m.Question[0], response.Msg.Copy())
+		// Inline cache update instead of spawning a goroutine per exchange.
+		// Under high concurrency, unbounded goroutine creation (30-100K/sec)
+		// overwhelms the scheduler.
+		msgCopy := response.Msg.Copy()
+		msgCopy.Extra = removeRecordsOfType(msgCopy.Extra, dns.TypeOPT)
+		if err := Cache.Update(z.zoneName, m.Question[0], msgCopy); err != nil {
+			Warn(fmt.Errorf("error trying to perform a cache update for zone [%s]: %w", z.zoneName, err).Error())
+		}
 	}
 
 	//---

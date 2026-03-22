@@ -32,7 +32,7 @@ func NewDenialOfExistenceNSEC3(ctx context.Context, zone string, records []*dns.
 		if r.Hash != dns.SHA1 {
 			continue
 		}
-		if r.Flags < 0 || r.Flags > 1 {
+		if r.Flags > 1 {
 			continue
 		}
 

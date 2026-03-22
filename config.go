@@ -68,7 +68,10 @@ var (
 
 //---
 
-// Cache Default (disabled) cache function.
+// Cache is the global cache implementation. Default is nil (disabled).
+// Note: This is a package-level variable shared by all Resolver instances in the process.
+// To use different cache implementations per resolver instance, consider wrapping
+// the resolver with a per-instance cache layer.
 var Cache CacheInterface = nil
 
 //---

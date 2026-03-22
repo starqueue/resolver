@@ -180,7 +180,10 @@ func (resolver *Resolver) resolveLabel(ctx context.Context, d *domain, z zone, q
 }
 
 func (resolver *Resolver) checkForMissingZones(ctx context.Context, d *domain, z zone, rmsg *dns.Msg, auth *authenticator) zone {
-	records := append(rmsg.Ns, rmsg.Answer...)
+	// Use a new slice to avoid mutating rmsg.Ns by appending to it.
+	records := make([]dns.RR, 0, len(rmsg.Ns)+len(rmsg.Answer))
+	records = append(records, rmsg.Ns...)
+	records = append(records, rmsg.Answer...)
 	if len(records) == 0 {
 		return z
 	}

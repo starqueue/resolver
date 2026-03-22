@@ -3,10 +3,12 @@ package resolver
 import (
 	"context"
 	"fmt"
-	"github.com/miekg/dns"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/miekg/dns"
+	"golang.org/x/sync/singleflight"
 )
 
 //---------------------------------------------------------------------------------
@@ -27,6 +29,7 @@ type zoneImpl struct {
 
 	pool  expiringExchanger
 	calls atomic.Uint64
+	sf    singleflight.Group // dedup concurrent identical zone exchanges
 
 	dnskeyRecords atomic.Value // stores []dns.RR
 	dnskeyExpiry  atomic.Int64 // unix timestamp
@@ -93,7 +96,15 @@ func (z *zoneImpl) exchange(ctx context.Context, m *dns.Msg) *Response {
 	}
 
 	ctx = context.WithValue(ctx, ctxZoneName, z.zoneName)
-	response := z.pool.exchange(ctx, m)
+
+	// Zone-level singleflight: if multiple queries need the same zone
+	// exchange (e.g. 1000 queries for *.com all need the .com NS delegation),
+	// only one network exchange happens. The rest share the result.
+	sfKey := m.Question[0].Name + "|" + TypeToString(m.Question[0].Qtype)
+	val, _, _ := z.sf.Do(sfKey, func() (any, error) {
+		return z.pool.exchange(ctx, m), nil
+	})
+	response := val.(*Response)
 
 	//---
 

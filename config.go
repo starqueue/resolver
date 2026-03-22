@@ -19,8 +19,8 @@ const (
 	DefaultRemoveAuthoritySectionForPositiveAnswers  = true
 	DefaultRemoveAdditionalSectionForPositiveAnswers = true
 
-	DefaultTimeoutUDP = 150 * time.Millisecond
-	DefaultTimeoutTCP = 600 * time.Millisecond
+	DefaultTimeoutUDP = 500 * time.Millisecond
+	DefaultTimeoutTCP = 2000 * time.Millisecond
 )
 
 var (

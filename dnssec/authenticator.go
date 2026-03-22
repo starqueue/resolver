@@ -57,6 +57,11 @@ func (a *Authenticator) AddResponse(zone Zone, msg *dns.Msg) error {
 	log := fmt.Sprintf("Adding response for zone [%s] in position %d with qname [%s] and type [%d]", name, position, msg.Question[0].Name, msg.Question[0].Qtype)
 	Info(log)
 
+	// Bounds check to prevent index-out-of-range panic for unexpectedly deep zone hierarchies.
+	if position < 0 || position >= len(a.inputBuffer) {
+		return fmt.Errorf("%w: zone [%s] has label count %d which exceeds expected buffer size %d", ErrNotSubdomain, name, position, len(a.inputBuffer))
+	}
+
 	// Ensure we are not passed more than one response for any given zone.
 	if v := a.inputBuffer[position]; v != nil {
 		return fmt.Errorf("%w: we already have a dnssec authenticator input for zone [%s]", ErrDuplicateInputForZone, name)

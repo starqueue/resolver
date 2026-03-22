@@ -64,9 +64,8 @@ func TestPoolExchange_IPv4OnlyFirstTry(t *testing.T) {
 		},
 	}
 
-	pool := nameserverPool{
-		ipv4: []exchanger{ns1, ns2},
-	}
+	pool := nameserverPool{}
+	pool.ipv4Servers.Store([]exchanger{ns1, ns2})
 	pool.updateIPCount()
 
 	// As ns1 returns a good response, we expect ns2 not to be called.
@@ -103,9 +102,8 @@ func TestPoolExchange_IPv4OnlySecondTry(t *testing.T) {
 		},
 	}
 
-	pool := nameserverPool{
-		ipv4: []exchanger{ns1, ns2},
-	}
+	pool := nameserverPool{}
+	pool.ipv4Servers.Store([]exchanger{ns1, ns2})
 	pool.updateIPCount()
 
 	// As ns1 returns an error response, we expect ns2 to be called.
@@ -139,10 +137,9 @@ func TestPoolExchange_IPv6Unavailable(t *testing.T) {
 		},
 	}
 
-	pool := nameserverPool{
-		ipv4: []exchanger{ns1},
-		ipv6: []exchanger{ns2},
-	}
+	pool := nameserverPool{}
+	pool.ipv4Servers.Store([]exchanger{ns1})
+	pool.ipv6Servers.Store([]exchanger{ns2})
 	pool.updateIPCount()
 
 	// Set IPv6 as Unavailable
@@ -195,9 +192,8 @@ func TestPoolExchange_IPv6OnlyFirstTry(t *testing.T) {
 		},
 	}
 
-	pool := nameserverPool{
-		ipv6: []exchanger{ns1, ns2},
-	}
+	pool := nameserverPool{}
+	pool.ipv6Servers.Store([]exchanger{ns1, ns2})
 	pool.updateIPCount()
 
 	// As ns1 returns a good response, we expect ns2 not to be called.
@@ -237,9 +233,8 @@ func TestPoolExchange_IPv6OnlySecondTry(t *testing.T) {
 		},
 	}
 
-	pool := nameserverPool{
-		ipv6: []exchanger{ns1, ns2},
-	}
+	pool := nameserverPool{}
+	pool.ipv6Servers.Store([]exchanger{ns1, ns2})
 	pool.updateIPCount()
 
 	// As ns1 returns an error response, we expect ns2 to be called.
@@ -280,10 +275,9 @@ func TestPoolExchange_Error(t *testing.T) {
 		},
 	}
 
-	pool := nameserverPool{
-		ipv4: []exchanger{ns1},
-		ipv6: []exchanger{ns2},
-	}
+	pool := nameserverPool{}
+	pool.ipv4Servers.Store([]exchanger{ns1})
+	pool.ipv6Servers.Store([]exchanger{ns2})
 	pool.updateIPCount()
 
 	msg := new(dns.Msg)

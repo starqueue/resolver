@@ -93,15 +93,18 @@ func buildRootServerPool() (*nameserverPool, error) {
 
 	pool := &nameserverPool{hostsWithoutAddresses: make([]string, 0)}
 
+	var ipv4 []exchanger
+	var ipv6 []exchanger
+
 	for rr, ok := zp.Next(); ok; rr, ok = zp.Next() {
 		switch rr := rr.(type) {
 		case *dns.A:
-			pool.ipv4 = append(pool.ipv4, &nameserver{
+			ipv4 = append(ipv4, &nameserver{
 				hostname: canonicalName(rr.Header().Name),
 				addr:     rr.A.String(),
 			})
 		case *dns.AAAA:
-			pool.ipv6 = append(pool.ipv6, &nameserver{
+			ipv6 = append(ipv6, &nameserver{
 				hostname: canonicalName(rr.Header().Name),
 				addr:     rr.AAAA.String(),
 			})
@@ -114,6 +117,8 @@ func buildRootServerPool() (*nameserverPool, error) {
 		return nil, err
 	}
 
+	pool.ipv4Servers.Store(ipv4)
+	pool.ipv6Servers.Store(ipv6)
 	pool.updateIPCount()
 
 	return pool, nil

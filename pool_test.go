@@ -43,14 +43,17 @@ func TestNewNameserverPool_Create(t *testing.T) {
 	assert.NotNil(t, pool)
 
 	assert.Len(t, pool.hostsWithoutAddresses, 0)
-	assert.Len(t, pool.ipv4, 4)
+	ipv4, _ := pool.ipv4Servers.Load().([]exchanger)
+	ipv6, _ := pool.ipv6Servers.Load().([]exchanger)
+
+	assert.Len(t, ipv4, 4)
 	assert.Equal(t, uint32(4), pool.countIPv4())
 
-	assert.Len(t, pool.ipv6, 3)
+	assert.Len(t, ipv6, 3)
 	assert.Equal(t, uint32(3), pool.countIPv6())
 
 	ips := make([]string, 7)
-	for i, ip := range append(pool.ipv4, pool.ipv6...) {
+	for i, ip := range append(ipv4, ipv6...) {
 		ips[i] = ip.(*nameserver).addr
 	}
 

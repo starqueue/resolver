@@ -76,16 +76,16 @@ func TestZone_Clone(t *testing.T) {
 	assert.Equal(t, "newzone.com.", clonedZone.name())
 	assert.Equal(t, originalZone.pool, clonedZone.(*zoneImpl).pool)
 
-	assert.Empty(t, clonedZone.(*zoneImpl).dnskeyRecords)
-	assert.Empty(t, clonedZone.(*zoneImpl).dnskeyExpiry)
+	assert.Nil(t, clonedZone.(*zoneImpl).dnskeyRecords.Load())
+	assert.Equal(t, int64(0), clonedZone.(*zoneImpl).dnskeyExpiry.Load())
 }
 
 func TestZone_DNSKeys_CachedAndValid(t *testing.T) {
 	// Setup
 	z := &zoneImpl{zoneName: "example.com."}
 	mockRR := []dns.RR{&dns.DNSKEY{Hdr: dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeDNSKEY, Class: dns.ClassINET, Ttl: 300}}}
-	z.dnskeyRecords = mockRR
-	z.dnskeyExpiry = time.Now().Add(time.Hour) // Keys are still valid
+	z.dnskeyRecords.Store(mockRR)
+	z.dnskeyExpiry.Store(time.Now().Add(time.Hour).Unix()) // Keys are still valid
 
 	// Execute
 	ctx := context.TODO()
@@ -103,7 +103,7 @@ func TestZone_DNSKeys_Expired(t *testing.T) {
 	z.pool = mockPool
 
 	// Prepare an expired DNS key
-	z.dnskeyExpiry = time.Now().Add(-time.Hour) // Keys are expired
+	z.dnskeyExpiry.Store(time.Now().Add(-time.Hour).Unix()) // Keys are expired
 
 	expectedResponse := &Response{
 		Msg: &dns.Msg{
@@ -185,5 +185,5 @@ func TestZone_DNSKeys_EmptyAnswer(t *testing.T) {
 	assert.NoError(t, err)
 
 	// We expect expiry to be in the future.
-	assert.Greater(t, z.dnskeyExpiry, time.Now())
+	assert.Greater(t, z.dnskeyExpiry.Load(), time.Now().Unix())
 }

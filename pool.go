@@ -21,15 +21,18 @@ const (
 type nameserverPool struct {
 	hostsWithoutAddresses []string
 
-	ipv4      []exchanger
-	ipv4Next  atomic.Uint32 // Round-robin counter; wraps at MaxUint32, handled by modulo operation.
-	ipv4Count atomic.Uint32
+	// ipv4Servers and ipv6Servers store []exchanger atomically.
+	// Readers load the slice without locking. Writers (enrich) replace
+	// the entire slice under the updating mutex.
+	ipv4Servers atomic.Value // stores []exchanger
+	ipv4Next    atomic.Uint32
+	ipv4Count   atomic.Uint32
 
-	ipv6      []exchanger
-	ipv6Next  atomic.Uint32 // Round-robin counter; wraps at MaxUint32, handled by modulo operation.
-	ipv6Count atomic.Uint32
+	ipv6Servers atomic.Value // stores []exchanger
+	ipv6Next    atomic.Uint32
+	ipv6Count   atomic.Uint32
 
-	updating sync.RWMutex
+	updating sync.Mutex // protects enrich writes only
 	enriched sync.Once
 
 	expires atomic.Int64
@@ -52,27 +55,23 @@ func (pool *nameserverPool) countIPv6() uint32 {
 }
 
 func (pool *nameserverPool) getIPv4() exchanger {
-	pool.updating.RLock()
-	defer pool.updating.RUnlock()
-
-	count := uint32(len(pool.ipv4))
+	servers, _ := pool.ipv4Servers.Load().([]exchanger)
+	count := uint32(len(servers))
 	if count == 0 {
 		return nil
 	}
-	ipv4Next := (pool.ipv4Next.Add(1) - 1) % count
-	return pool.ipv4[ipv4Next]
+	idx := (pool.ipv4Next.Add(1) - 1) % count
+	return servers[idx]
 }
 
 func (pool *nameserverPool) getIPv6() exchanger {
-	pool.updating.RLock()
-	defer pool.updating.RUnlock()
-
-	count := uint32(len(pool.ipv6))
+	servers, _ := pool.ipv6Servers.Load().([]exchanger)
+	count := uint32(len(servers))
 	if count == 0 {
 		return nil
 	}
-	ipv6Next := (pool.ipv6Next.Add(1) - 1) % count
-	return pool.ipv6[ipv6Next]
+	idx := (pool.ipv6Next.Add(1) - 1) % count
+	return servers[idx]
 }
 
 //---
@@ -87,11 +86,8 @@ func (pool *nameserverPool) status() NameserverPoolStatus {
 		return PoolExpired
 	}
 
-	pool.updating.RLock()
-	defer pool.updating.RUnlock()
-
-	ipv4Count := len(pool.ipv4)
-	ipv6Count := len(pool.ipv6)
+	ipv4Count := int(pool.ipv4Count.Load())
+	ipv6Count := int(pool.ipv6Count.Load())
 
 	if ipv4Count == 0 && ipv6Count == 0 && len(pool.hostsWithoutAddresses) == 0 {
 		return PoolEmpty
@@ -107,7 +103,10 @@ func (pool *nameserverPool) status() NameserverPoolStatus {
 	}
 
 	// If there are unknown addresses, and we have less than x IPs, then we want to enrich.
-	if total < DesireNumberOfNameserversPerZone && len(pool.hostsWithoutAddresses) > 0 {
+	pool.updating.Lock()
+	hasUnresolved := len(pool.hostsWithoutAddresses) > 0
+	pool.updating.Unlock()
+	if total < DesireNumberOfNameserversPerZone && hasUnresolved {
 		return PrimedButNeedsEnhancing
 	}
 
@@ -135,6 +134,9 @@ func newNameserverPool(nameservers []*dns.NS, extra []dns.RR) *nameserverPool {
 		}
 	}
 
+	var ipv4 []exchanger
+	var ipv6 []exchanger
+
 	for _, rr := range nameservers {
 		hostname := canonicalName(rr.Ns)
 
@@ -154,14 +156,14 @@ func newNameserverPool(nameservers []*dns.NS, extra []dns.RR) *nameserverPool {
 		ttl = min(minTtlSeen, ttl)
 
 		for _, addr := range a {
-			pool.ipv4 = append(pool.ipv4, &nameserver{
+			ipv4 = append(ipv4, &nameserver{
 				hostname: addr.Header().Name,
 				addr:     addr.A.String(),
 			})
 		}
 
 		for _, addr := range aaaa {
-			pool.ipv6 = append(pool.ipv6, &nameserver{
+			ipv6 = append(ipv6, &nameserver{
 				hostname: addr.Header().Name,
 				addr:     addr.AAAA.String(),
 			})
@@ -170,6 +172,8 @@ func newNameserverPool(nameservers []*dns.NS, extra []dns.RR) *nameserverPool {
 	}
 
 	pool.hostsWithoutAddresses = slices.Clip(pool.hostsWithoutAddresses)
+	pool.ipv4Servers.Store(ipv4)
+	pool.ipv6Servers.Store(ipv6)
 
 	expires := time.Now().Add(time.Duration(ttl) * time.Second)
 	pool.expires.Store(expires.Unix())
@@ -186,6 +190,15 @@ func (pool *nameserverPool) enrich(records []dns.RR) {
 
 	pool.updating.Lock()
 	defer pool.updating.Unlock()
+
+	// Load current slices to append to.
+	ipv4, _ := pool.ipv4Servers.Load().([]exchanger)
+	ipv6, _ := pool.ipv6Servers.Load().([]exchanger)
+	// Copy so we don't mutate the slice readers may hold.
+	newIPv4 := make([]exchanger, len(ipv4))
+	copy(newIPv4, ipv4)
+	newIPv6 := make([]exchanger, len(ipv6))
+	copy(newIPv6, ipv6)
 
 	var ttl = MaxAllowedTTL
 	hostnamesStillWithoutAddresses := make([]string, 0, len(pool.hostsWithoutAddresses))
@@ -204,19 +217,23 @@ func (pool *nameserverPool) enrich(records []dns.RR) {
 		ttl = min(minTtlSeen, ttl)
 
 		for _, addr := range a {
-			pool.ipv4 = append(pool.ipv4, &nameserver{
+			newIPv4 = append(newIPv4, &nameserver{
 				hostname: addr.Header().Name,
 				addr:     addr.A.String(),
 			})
 		}
 
 		for _, addr := range aaaa {
-			pool.ipv6 = append(pool.ipv6, &nameserver{
+			newIPv6 = append(newIPv6, &nameserver{
 				hostname: addr.Header().Name,
 				addr:     addr.AAAA.String(),
 			})
 		}
 	}
+
+	// Atomically replace slices so readers never see partial updates.
+	pool.ipv4Servers.Store(newIPv4)
+	pool.ipv6Servers.Store(newIPv6)
 
 	// Only shorten the expiry time, never extend it beyond the original NS TTL.
 	if pool.expires.Load() > 0 {
@@ -232,8 +249,10 @@ func (pool *nameserverPool) enrich(records []dns.RR) {
 }
 
 func (pool *nameserverPool) updateIPCount() {
-	pool.ipv4Count.Store(uint32(len(pool.ipv4)))
-	pool.ipv6Count.Store(uint32(len(pool.ipv6)))
+	ipv4, _ := pool.ipv4Servers.Load().([]exchanger)
+	ipv6, _ := pool.ipv6Servers.Load().([]exchanger)
+	pool.ipv4Count.Store(uint32(len(ipv4)))
+	pool.ipv6Count.Store(uint32(len(ipv6)))
 }
 
 func findAddressesForHostname(hostname string, records []dns.RR) ([]*dns.A, []*dns.AAAA, uint32) {

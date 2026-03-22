@@ -105,6 +105,7 @@ func (a *authenticator) result() (dnssec.AuthenticationResult, dnssec.DenialOfEx
 		for _, e := range a.errors {
 			err = fmt.Errorf("%w: %w", err, e)
 		}
+		return 0, 0, err
 	}
 
 	return a.auth.Result()

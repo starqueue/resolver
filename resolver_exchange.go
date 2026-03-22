@@ -116,6 +116,16 @@ func (resolver *Resolver) exchange(ctx context.Context, qmsg *dns.Msg) *Response
 	// We track the last zone, as that's were we pass the query for the next label.
 	var z zone = knownZones[0]
 
+	// Prefetch: if we already know multiple zones in the chain, start
+	// DNSKEY lookups for all of them in parallel so they're cached by
+	// the time the authenticator needs them. This overlaps DNSSEC
+	// validation work with the serial zone resolution.
+	if auth != nil && len(knownZones) > 1 {
+		for _, kz := range knownZones {
+			go kz.dnskeys(ctx)
+		}
+	}
+
 	for ; d.more(); d.next() {
 		if counter.Add(1) > MaxQueriesPerRequest {
 			return newResponseError(fmt.Errorf("%w. value is currently set to: %d", ErrMaxQueriesPerRequestReached, MaxQueriesPerRequest))

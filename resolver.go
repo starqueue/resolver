@@ -72,6 +72,15 @@ func (resolver *Resolver) getExchanger() exchanger {
 	return resolver
 }
 
+// Close is a no-op placeholder for future graceful shutdown support.
+// Currently, goroutines spawned for DNSKEY pre-fetching and enrichment are not
+// tracked at the resolver level. Callers should use context cancellation to
+// signal in-flight queries to stop. A future implementation could add lifecycle
+// management for background goroutines.
+func (resolver *Resolver) Close() {
+	// No-op: placeholder for future shutdown logic.
+}
+
 // CountZones metrics gathering.
 func (resolver *Resolver) CountZones() int {
 	return resolver.zones.count()

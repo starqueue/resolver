@@ -57,7 +57,13 @@ func (a *authenticator) addDelegationSignerLink(z zone, qname string) {
 	go func() {
 		defer a.processing.Done()
 
-		go z.dnskeys(a.ctx)
+		// Pre-fetch DNSKEY records in a tracked goroutine so it completes
+		// before the authenticator is closed.
+		a.processing.Add(1)
+		go func() {
+			defer a.processing.Done()
+			z.dnskeys(a.ctx)
+		}()
 
 		dsMsg := new(dns.Msg)
 		dsMsg.SetQuestion(dns.Fqdn(qname), dns.TypeDS)

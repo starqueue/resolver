@@ -36,7 +36,8 @@ func TestVerify_PositiveResponse(t *testing.T) {
 
 func TestVerify_PositiveResponseMultipleWildcardSignatures(t *testing.T) {
 
-	// If more than one Signature represents a wildcard, we get an error
+	// Multiple wildcard-expanded RRsets are valid per RFC 4035 (e.g., A and AAAA from same wildcard).
+	// Without DOE proof, the result is Bogus due to missing wildcard proof, not due to multiple wildcards.
 
 	a1 := newRR("a1.example.com. 3600 IN A 192.0.2.53").(*dns.A)
 	a2 := newRR("a2.example.com. 3600 IN A 192.0.2.53").(*dns.A)
@@ -45,6 +46,7 @@ func TestVerify_PositiveResponseMultipleWildcardSignatures(t *testing.T) {
 	r := &result{
 		zone: &mockZone{name: zoneName},
 		msg: &dns.Msg{
+			Question: []dns.Question{{Name: "a1.example.com.", Qtype: dns.TypeA, Qclass: dns.ClassINET}},
 			Answer: []dns.RR{
 				a1,
 				a2,
@@ -65,7 +67,7 @@ func TestVerify_PositiveResponseMultipleWildcardSignatures(t *testing.T) {
 	}
 
 	state, err := validatePositiveResponse(ctx, r)
-	assert.ErrorIs(t, err, ErrMultipleWildcardSignatures)
+	assert.ErrorIs(t, err, ErrBogusWildcardDoeNotFound)
 	assert.Equal(t, Bogus, state)
 	assert.Empty(t, r.dsRecords)
 }

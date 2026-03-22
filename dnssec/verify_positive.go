@@ -23,13 +23,8 @@ func validatePositiveResponse(ctx context.Context, r *result) (status Authentica
 			// If here, it implies that the specific QNAME didn't exist, so we expect a NSEC(3) record proving that.
 			// https://datatracker.ietf.org/doc/html/rfc5155#section-8.8
 
-			// TODO: this check needs to ensure only one RRSET has been expanded, as there
-			// can be multiple
-
-			if wildcardSignaturesSeen {
-				// More than one wildcard signature is suspicious
-				return Bogus, ErrMultipleWildcardSignatures
-			}
+			// Multiple wildcard-expanded RRsets are valid per RFC 4035 - for example,
+			// both A and AAAA records could be synthesized from the same wildcard.
 
 			wildcardSignaturesSeen = true
 

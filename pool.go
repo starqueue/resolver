@@ -218,17 +218,13 @@ func (pool *nameserverPool) enrich(records []dns.RR) {
 		}
 	}
 
+	// Only shorten the expiry time, never extend it beyond the original NS TTL.
 	if pool.expires.Load() > 0 {
-		expires := time.Now().Add(time.Duration(ttl) * time.Second)
-		pool.expires.Store(expires.Unix())
+		newExpiry := time.Now().Add(time.Duration(ttl) * time.Second).Unix()
+		if currentExpiry := pool.expires.Load(); newExpiry < currentExpiry {
+			pool.expires.Store(newExpiry)
+		}
 	}
-
-	//if !pool.expires.IsZero() {
-	//	expires := time.Now().Add(time.Duration(ttl) * time.Second)
-	//	if expires.Before(pool.expires) {
-	//		pool.expires = expires
-	//	}
-	//}
 
 	pool.hostsWithoutAddresses = slices.Clip(hostnamesStillWithoutAddresses)
 

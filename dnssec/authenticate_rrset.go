@@ -48,13 +48,21 @@ func authenticate(zone string, rrsets []dns.RR, dnskeys []*dns.DNSKEY, section s
 		}
 
 		//---
-		// TTL cannot be greater than the time left before the signature expires (logic from dns.ValidityPeriod)
+		// TTL cannot be greater than the time left before the signature expires.
+		// Uses RFC 1982 serial arithmetic to handle 32-bit timestamp wrapping.
+		// The year68 constant (1<<31) handles the epoch boundary correctly for
+		// RRSIG Expiration values within 68 years of the current time.
 
 		utc := time.Now().UTC().Unix()
 		mode := (int64(rrsig.Expiration) - utc) / year68
 		te := int64(rrsig.Expiration) + mode*year68
-		delta := uint32(te - utc)
-		sig.ttl = min(sig.ttl, delta)
+		if te > utc {
+			delta := uint32(te - utc)
+			sig.ttl = min(sig.ttl, delta)
+		} else {
+			// Signature has already expired; set TTL to 0.
+			sig.ttl = 0
+		}
 
 		for _, rr := range sig.rrset {
 			sig.ttl = min(sig.ttl, rr.Header().Ttl)

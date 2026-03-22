@@ -99,8 +99,7 @@ func (a *authenticator) start() {
 }
 
 func (a *authenticator) result() (dnssec.AuthenticationResult, dnssec.DenialOfExistenceState, error) {
-	a.finished.Store(true)
-	a.processing.Wait()
+	// close() handles setting finished=true, waiting for processing, and closing the channel.
 	a.close()
 
 	// `Errors` is only accessible from this thread once we've finished Wait().

@@ -29,11 +29,12 @@ type authenticatorInput struct {
 
 func newAuthenticator(ctx context.Context, question dns.Question) *authenticator {
 	a := dnssec.NewAuth(ctx, question)
-	// Buffer size based on expected zone depth (label count + 1) to prevent backpressure
-	// for deeply delegated domains under high DNSSEC load.
-	bufSize := dns.CountLabel(question.Name) + 1
-	if bufSize < 8 {
-		bufSize = 8
+	// Buffer size based on expected zone depth. Each zone may produce a DS
+	// lookup response + a DNSKEY prefetch + the main exchange response, so
+	// size at 3× label count to prevent sender blocking under DNSSEC load.
+	bufSize := dns.CountLabel(question.Name) * 3
+	if bufSize < 16 {
+		bufSize = 16
 	}
 	auth := &authenticator{
 		ctx:        ctx,

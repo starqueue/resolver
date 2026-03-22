@@ -52,6 +52,12 @@ func createZone(ctx context.Context, name, parent string, nameservers []*dns.NS,
 	return z, nil
 }
 
+// enrichPool resolves NS hostnames to IP addresses to populate the nameserver pool.
+// Note: This function uses recursive resolution to resolve NS hostnames, which means
+// an attacker could craft NS records pointing to hostnames that trigger queries to
+// arbitrary destinations. The resolver relies on network-level controls (firewalls)
+// to prevent queries to internal/private networks. Deployers should ensure the resolver
+// cannot reach private IP ranges if this is a concern.
 func enrichPool(ctx context.Context, zoneName string, pool *nameserverPool, exchanger exchanger) error {
 	if len(pool.hostsWithoutAddresses) == 0 {
 		return fmt.Errorf("%w [%s]: the nameserver pool is empty so we have no hostnames to enrich", ErrFailedEnrichingPool, zoneName)

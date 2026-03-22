@@ -26,20 +26,18 @@ func (zones *zones) getZoneList(name string) []zone {
 	slices.Reverse(indexes)
 
 	zones.lock.RLock()
+	defer zones.lock.RUnlock()
+
 	if zones.zones == nil {
-		zones.lock.RUnlock()
 		return nil
 	}
-	zones.lock.RUnlock()
 
 	var last zone
 	result := make([]zone, 0, len(indexes))
 	for _, idx := range indexes {
 		zname := name[idx:]
 
-		zones.lock.RLock()
 		z, _ := zones.zones[zname]
-		zones.lock.RUnlock()
 
 		// Skip the zone if missing
 		if z == nil || z.expired() {

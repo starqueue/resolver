@@ -34,13 +34,32 @@ func (pool *nameserverPool) exchange(ctx context.Context, m *dns.Msg) *Response 
 	if response.IsEmpty() || response.HasError() || response.truncated() {
 		// If there was an issue, we give it one more try.
 		// If we have more than one nameserver, this will try a different one.
-		if hasIPv4 {
-			if server := pool.getIPv4(); server != nil {
-				response = server.exchange(ctx, m)
+		// Prefer the opposite protocol from what was initially tried for diversity.
+		if hasIPv6 && IPv6Available() {
+			// If we initially tried IPv6, retry with IPv4; otherwise retry with IPv6.
+			if hasIPv4 {
+				if server := pool.getIPv4(); server != nil {
+					response = server.exchange(ctx, m)
+				}
+			} else {
+				if server := pool.getIPv6(); server != nil {
+					response = server.exchange(ctx, m)
+				}
 			}
 		} else {
-			if server := pool.getIPv6(); server != nil {
-				response = server.exchange(ctx, m)
+			// Initial attempt was IPv4. Try a different IPv4 server if available,
+			// or fall back to IPv6.
+			if hasIPv6 {
+				if server := pool.getIPv6(); server != nil {
+					response = server.exchange(ctx, m)
+				}
+			} else if hasIPv4 {
+				// Only retry same protocol if we have more than one server.
+				if pool.countIPv4() > 1 {
+					if server := pool.getIPv4(); server != nil {
+						response = server.exchange(ctx, m)
+					}
+				}
 			}
 		}
 	}

@@ -79,6 +79,9 @@ var Cache CacheInterface = nil
 type Logger func(string)
 
 // Default logging functions just black-hole the input.
+// Note: These are package-level globals shared by all Resolver instances.
+// They should be set once at startup before creating any Resolver instances.
+// Changing them while queries are in flight is not safe without external synchronization.
 
 var Query Logger = func(s string) {}
 var Debug Logger = func(s string) {}

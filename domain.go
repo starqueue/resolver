@@ -83,6 +83,9 @@ func (d *domain) gap(target string) []string {
 
 	results := make([]string, 0, missing)
 	for i := d.currentIdx; i < missing+d.currentIdx; i++ {
+		if i >= len(d.labelIndexes) {
+			break
+		}
 		results = append(results, d.name[d.labelIndexes[i]:])
 	}
 	return results

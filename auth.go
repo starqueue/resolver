@@ -45,7 +45,6 @@ func (a *authenticator) close() {
 		a.finished.Store(true)
 		a.processing.Wait()
 		close(a.queue)
-		a.queue = nil
 	})
 }
 

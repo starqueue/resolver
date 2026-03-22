@@ -84,6 +84,10 @@ func (resolver *Resolver) exchange(ctx context.Context, qmsg *dns.Msg) *Response
 	// The last element will always be the root (.).
 	knownZones := resolver.zones.getZoneList(qmsg.Question[0].Name)
 
+	if len(knownZones) == 0 {
+		return newResponseError(fmt.Errorf("%w: no known zones found for %s", ErrInternalError, qmsg.Question[0].Name))
+	}
+
 	if auth != nil {
 		// Lookup the DNSSEC details for these zones.
 		// We don't do this lookup for the root, thus len()-1.

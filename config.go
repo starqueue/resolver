@@ -35,10 +35,12 @@ var (
 	// we receive. Shorter TTLs on received records will still be respected.
 	MaxAllowedTTL = DefaultMaxAllowedTTL
 
-	// MaxQueriesPerRequest gives the maximum number of DNS lookups that can occur some a single request to resolver.Exchange().
-	// This will include all requests for all the requests from the root, to the leaf; plus any enrichment needed.
-	// It's main task is to prevent infinite loops.
-	// Note that lookups for DNSKEY and DS records are excluded from this count.
+	// MaxQueriesPerRequest gives the maximum number of DNS lookups that can occur from a single request to resolver.Exchange().
+	// This will include all requests from the root to the leaf, plus any enrichment needed.
+	// Its main task is to prevent infinite loops.
+	// Note: DNSKEY and DS lookups performed by the DNSSEC authenticator use separate zone exchanges
+	// that go through the pool directly, not through resolver.exchange(), so they do not increment
+	// this counter.
 	MaxQueriesPerRequest = DefaultMaxQueriesPerRequest
 
 	// DesireNumberOfNameserversPerZone The number of nameservers, with IP addresses, that we ideally know for a zone.

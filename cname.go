@@ -51,9 +51,11 @@ func cname(ctx context.Context, qmsg *dns.Msg, r *Response, exchanger exchanger)
 			return fmt.Errorf("unable to follow cname [%s]", c.Target)
 		}
 
+		// Only append Answer records from the CNAME target resolution.
+		// Authority (Ns) and Extra sections from different zones may have different
+		// trust levels, so we don't mix them into the original response.
+		// The finaliseResponse function will deduplicate the answer records.
 		r.Msg.Answer = append(r.Msg.Answer, cnameRMsg.Msg.Answer...)
-		r.Msg.Ns = append(r.Msg.Ns, cnameRMsg.Msg.Ns...)
-		r.Msg.Extra = append(r.Msg.Extra, cnameRMsg.Msg.Extra...)
 
 		// Ensure we handle differing DNSSEC results correctly.
 		r.Auth = r.Auth.Combine(cnameRMsg.Auth)

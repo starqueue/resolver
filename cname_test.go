@@ -54,8 +54,10 @@ func TestCName_FoundAuthoritativeSuccess(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 1, exchangeCalled)
 	assert.Contains(t, rmsg.Answer, a1)
-	assert.Contains(t, rmsg.Ns, a2)
-	assert.Contains(t, rmsg.Extra, a3)
+	// Ns and Extra from CNAME target are no longer appended to prevent record injection
+	// from different trust zones (Fix #53).
+	assert.NotContains(t, rmsg.Ns, a2)
+	assert.NotContains(t, rmsg.Extra, a3)
 	assert.Equal(t, dns.RcodeSuccess, rmsg.Rcode)
 	assert.True(t, rmsg.Authoritative)
 }

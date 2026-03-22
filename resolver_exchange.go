@@ -147,6 +147,10 @@ func (resolver *Resolver) resolveLabel(ctx context.Context, d *domain, z zone, q
 
 	if auth != nil {
 		// If we're going to need the DNSKEY, we can pre-fetch it.
+		// The zone's dnskeys() method has its own mutex, so concurrent calls
+		// will serialize. The goroutine is fire-and-forget here since the
+		// authenticator's addDelegationSignerLink also fetches DNSKEY records
+		// via a tracked goroutine.
 		go z.dnskeys(ctx)
 	}
 

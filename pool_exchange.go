@@ -65,7 +65,7 @@ func (pool *nameserverPool) exchange(ctx context.Context, m *dns.Msg) *Response 
 	}
 
 	if response.IsEmpty() || response.HasError() {
-		errMsg := fmt.Sprintf("all nameservers tried returned an unsucessful response for qname [%s]", m.Question[0].Name)
+		errMsg := fmt.Sprintf("all nameservers tried returned an unsuccessful response for qname [%s]", m.Question[0].Name)
 		if z, ok := ctx.Value(ctxZoneName).(string); ok {
 			errMsg = errMsg + fmt.Sprintf(" in zone [%s]", z)
 		}

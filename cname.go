@@ -7,8 +7,15 @@ import (
 	"strings"
 )
 
+// MaxCNAMEChainLength limits the depth of CNAME chains to prevent amplification attacks.
+const MaxCNAMEChainLength = 10
+
 func cname(ctx context.Context, qmsg *dns.Msg, r *Response, exchanger exchanger) error {
 	cnames := extractRecords[*dns.CNAME](r.Msg.Answer)
+
+	if len(cnames) > MaxCNAMEChainLength {
+		return fmt.Errorf("CNAME chain length %d exceeds maximum allowed %d", len(cnames), MaxCNAMEChainLength)
+	}
 
 	targets := make([]string, len(cnames))
 	for i, c := range cnames {

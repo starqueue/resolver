@@ -124,6 +124,21 @@ func newNameserverPool(nameservers []*dns.NS, extra []dns.RR) *nameserverPool {
 	var ttl = MaxAllowedTTL
 	pool.hostsWithoutAddresses = make([]string, 0, len(nameservers))
 
+	// Build a set of valid NS hostnames to validate glue records against.
+	// Only glue records matching declared NS hostnames are trusted.
+	validHostnames := make(map[string]bool, len(nameservers))
+	for _, rr := range nameservers {
+		validHostnames[canonicalName(rr.Ns)] = true
+	}
+
+	// Filter extra records to only include those matching NS hostnames.
+	validExtra := make([]dns.RR, 0, len(extra))
+	for _, rr := range extra {
+		if validHostnames[canonicalName(rr.Header().Name)] {
+			validExtra = append(validExtra, rr)
+		}
+	}
+
 	for _, rr := range nameservers {
 		hostname := canonicalName(rr.Ns)
 
@@ -131,7 +146,7 @@ func newNameserverPool(nameservers []*dns.NS, extra []dns.RR) *nameserverPool {
 
 		//---
 
-		a, aaaa, minTtlSeen := findAddressesForHostname(hostname, extra)
+		a, aaaa, minTtlSeen := findAddressesForHostname(hostname, validExtra)
 
 		if len(a) == 0 && len(aaaa) == 0 {
 			pool.hostsWithoutAddresses = append(pool.hostsWithoutAddresses, hostname)

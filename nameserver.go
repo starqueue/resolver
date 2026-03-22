@@ -34,11 +34,11 @@ type nameserver struct {
 }
 
 func (*nameserver) defaultDnsClientFactory(protocol string) dnsClient {
-	timeout := DefaultTimeoutUDP
 	if protocol == "tcp" {
-		timeout = DefaultTimeoutTCP
+		return &dns.Client{Net: "tcp", Timeout: DefaultTimeoutTCP}
 	}
-	return &dns.Client{Net: protocol, Timeout: timeout}
+	// Use pooled UDP connections to avoid creating a new socket per query.
+	return newPooledUDPClient(DefaultTimeoutUDP)
 }
 
 func (nameserver *nameserver) initClients() {

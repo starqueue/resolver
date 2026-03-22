@@ -239,11 +239,11 @@ func TestDefaultDnsClientFactory_UDP(t *testing.T) {
 	ns := &nameserver{addr: "2001:db8::1"}
 
 	client := ns.defaultDnsClientFactory("udp")
-	assert.IsType(t, new(dns.Client), client)
-	typedClient, ok := client.(*dns.Client)
+	assert.IsType(t, &pooledUDPClient{}, client)
+	typedClient, ok := client.(*pooledUDPClient)
 	assert.True(t, ok)
 	if ok {
-		assert.Equal(t, DefaultTimeoutUDP, typedClient.Timeout)
+		assert.Equal(t, DefaultTimeoutUDP, typedClient.timeout)
 	}
 
 }

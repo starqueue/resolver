@@ -3,10 +3,12 @@ package resolver
 import (
 	"context"
 	"fmt"
-	"github.com/miekg/dns"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/miekg/dns"
 )
 
 // dnsClientFactory defines a factory function for creating a DNS client.
@@ -22,16 +24,13 @@ type nameserver struct {
 
 	dnsClientFactory dnsClientFactory
 
-	clientLock sync.Mutex
+	clientOnce sync.Once
 	udpClient  dnsClient
 	tcpClient  dnsClient
 
-	metricsLock         sync.Mutex
-	numberOfRequests    uint32
-	totalResponseTime   time.Duration
-	averageResponseTime time.Duration
-	numberOfTcpRequests uint32
-	protocolRatio       float32
+	numberOfRequests    atomic.Uint32
+	totalResponseTimeNs atomic.Int64
+	numberOfTcpRequests atomic.Uint32
 }
 
 func (*nameserver) defaultDnsClientFactory(protocol string) dnsClient {
@@ -42,26 +41,19 @@ func (*nameserver) defaultDnsClientFactory(protocol string) dnsClient {
 	return &dns.Client{Net: protocol, Timeout: timeout}
 }
 
-func (nameserver *nameserver) getClient(protocol string) dnsClient {
-	nameserver.clientLock.Lock()
-	defer nameserver.clientLock.Unlock()
-
-	if protocol == "udp" {
-		if nameserver.udpClient == nil {
-			factory := nameserver.defaultDnsClientFactory
-			if nameserver.dnsClientFactory != nil {
-				factory = nameserver.dnsClientFactory
-			}
-			nameserver.udpClient = factory("udp")
-		}
-		return nameserver.udpClient
+func (nameserver *nameserver) initClients() {
+	factory := nameserver.defaultDnsClientFactory
+	if nameserver.dnsClientFactory != nil {
+		factory = nameserver.dnsClientFactory
 	}
-	if nameserver.tcpClient == nil {
-		factory := nameserver.defaultDnsClientFactory
-		if nameserver.dnsClientFactory != nil {
-			factory = nameserver.dnsClientFactory
-		}
-		nameserver.tcpClient = factory("tcp")
+	nameserver.udpClient = factory("udp")
+	nameserver.tcpClient = factory("tcp")
+}
+
+func (nameserver *nameserver) getClient(protocol string) dnsClient {
+	nameserver.clientOnce.Do(nameserver.initClients)
+	if protocol == "udp" {
+		return nameserver.udpClient
 	}
 	return nameserver.tcpClient
 }
@@ -106,7 +98,7 @@ func (nameserver *nameserver) exchange(ctx context.Context, m *dns.Msg) *Respons
 			addr,
 		))
 
-		go nameserver.updateMetrics(protocol, r.Duration)
+		nameserver.updateMetrics(protocol, r.Duration)
 
 		// If we got an error back, we'll continue to maybe try again.
 		if r.HasError() {
@@ -124,18 +116,9 @@ func (nameserver *nameserver) exchange(ctx context.Context, m *dns.Msg) *Respons
 }
 
 func (nameserver *nameserver) updateMetrics(protocol string, duration time.Duration) {
-	nameserver.metricsLock.Lock()
-
-	nameserver.numberOfRequests++
-
-	nameserver.totalResponseTime = nameserver.totalResponseTime + duration
-	nameserver.averageResponseTime = nameserver.totalResponseTime / time.Duration(nameserver.numberOfRequests)
-
+	nameserver.numberOfRequests.Add(1)
+	nameserver.totalResponseTimeNs.Add(duration.Nanoseconds())
 	if protocol == "tcp" {
-		nameserver.numberOfTcpRequests++
+		nameserver.numberOfTcpRequests.Add(1)
 	}
-
-	nameserver.protocolRatio = float32(nameserver.numberOfTcpRequests) / float32(nameserver.numberOfRequests)
-
-	nameserver.metricsLock.Unlock()
 }

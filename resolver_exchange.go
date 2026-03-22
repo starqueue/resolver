@@ -383,17 +383,20 @@ func (resolver *Resolver) finaliseResponse(ctx context.Context, auth *authentica
 		}
 	}
 
-	dedup := make(map[string]dns.RR)
-	if len(response.Msg.Answer) > 0 {
-		response.Msg.Answer = dns.Dedup(response.Msg.Answer, dedup)
-	}
-	if len(response.Msg.Ns) > 0 {
-		clear(dedup)
-		response.Msg.Ns = dns.Dedup(response.Msg.Ns, dedup)
-	}
-	if len(response.Msg.Extra) > 0 {
-		clear(dedup)
-		response.Msg.Extra = dns.Dedup(response.Msg.Extra, dedup)
+	// Only allocate dedup map when there are sections to deduplicate.
+	if len(response.Msg.Answer) > 0 || len(response.Msg.Ns) > 0 || len(response.Msg.Extra) > 0 {
+		dedup := make(map[string]dns.RR)
+		if len(response.Msg.Answer) > 0 {
+			response.Msg.Answer = dns.Dedup(response.Msg.Answer, dedup)
+		}
+		if len(response.Msg.Ns) > 0 {
+			clear(dedup)
+			response.Msg.Ns = dns.Dedup(response.Msg.Ns, dedup)
+		}
+		if len(response.Msg.Extra) > 0 {
+			clear(dedup)
+			response.Msg.Extra = dns.Dedup(response.Msg.Extra, dedup)
+		}
 	}
 
 	if auth != nil {

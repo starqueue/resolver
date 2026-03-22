@@ -57,8 +57,11 @@ var (
 	// aligns the resolver with https://datatracker.ietf.org/doc/html/rfc4035#section-5.5
 	SuppressBogusResponseSections = DefaultSuppressBogusResponseSections
 
-	// RemoveAuthoritySectionForPositiveAnswers indicates if the Authority section should be returned when it's deemed
-	// that it's record have no material impact on the result. e.g. it only contains nameserver records.
+	// RemoveAuthoritySectionForPositiveAnswers indicates if the Authority section should be removed when it's deemed
+	// that its records have no material impact on the result, e.g. it only contains nameserver records.
+	// Note: RFC 2181 Section 6.1 specifies that authority section NS records provide useful delegation
+	// information for downstream caching resolvers. Setting this to false may improve interoperability
+	// with downstream caching resolvers at the cost of larger response sizes.
 	RemoveAuthoritySectionForPositiveAnswers  = DefaultRemoveAuthoritySectionForPositiveAnswers
 	RemoveAdditionalSectionForPositiveAnswers = DefaultRemoveAdditionalSectionForPositiveAnswers
 )

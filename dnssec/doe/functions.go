@@ -51,22 +51,24 @@ func canonicalCmp(a, b string) int {
 	return 0
 }
 
-// Convert escaped octets (e.g., \001) to their byte values for comparison
+// canonicalDecodeEscaped converts escaped octets (e.g., \001) to their raw byte values
+// for DNS canonical ordering per RFC 4034 Section 6.1. We use raw byte values rather than
+// UTF-8 rune encoding to ensure correct ordering for octet values > 127.
 func canonicalDecodeEscaped(label string) string {
-	decoded := ""
+	var decoded []byte
 	for i := 0; i < len(label); i++ {
 		if label[i] == '\\' && i+3 < len(label) && canonicalIsDigit(label[i+1]) && canonicalIsDigit(label[i+2]) && canonicalIsDigit(label[i+3]) {
-			// Decode escaped octet as a numeric value
+			// Decode escaped octet as a raw byte value, not a UTF-8 rune.
 			octetValue, err := strconv.Atoi(label[i+1 : i+4])
-			if err == nil {
-				decoded += string(rune(octetValue))
+			if err == nil && octetValue >= 0 && octetValue <= 255 {
+				decoded = append(decoded, byte(octetValue))
 			}
 			i += 3 // Skip the escaped characters
 		} else {
-			decoded += string(label[i])
+			decoded = append(decoded, label[i])
 		}
 	}
-	return decoded
+	return string(decoded)
 }
 
 // Check if a character is a digit

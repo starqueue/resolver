@@ -64,6 +64,8 @@ func (resolver *Resolver) exchange(ctx context.Context, qmsg *dns.Msg) *Response
 	// We setup the DNSSEC Authenticator
 
 	// Validate that the question section is non-empty.
+	// This guard protects all subsequent qmsg.Question[0] accesses in this method
+	// and in resolveLabel/finaliseResponse which are called from here.
 	if len(qmsg.Question) == 0 {
 		return newResponseError(fmt.Errorf("%w: message has no question section", ErrInternalError))
 	}

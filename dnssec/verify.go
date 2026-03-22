@@ -13,8 +13,13 @@ func (v verifier) verify(ctx context.Context, zone Zone, msg *dns.Msg, dsRecords
 	}
 
 	if len(dsRecordsFromParent) == 0 {
-		return Insecure, r, nil // TODO: I'm not really sure this is an error. It's often expected once the chain breaks.
-		//return Insecure, r, ErrNoParentDSRecords
+		// When no DS records are provided from the parent zone, the child zone is treated as Insecure.
+		// This is the expected behavior for unsigned delegations where the parent zone has no DS records
+		// for this child. Protection against DS-stripping downgrade attacks relies on the parent zone's
+		// DNSSEC validation proving the absence of DS records via NSEC/NSEC3 denial-of-existence proofs.
+		// The authenticator's result chain validation (in result.go) checks that transitions from Secure
+		// to Insecure are backed by proper denial-of-existence records, preventing silent downgrades.
+		return Insecure, r, nil
 	}
 
 	// Verify DNSKEYS

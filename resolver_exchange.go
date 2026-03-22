@@ -224,6 +224,9 @@ func (resolver *Resolver) checkForMissingZones(ctx context.Context, d *domain, z
 		if err == nil && soa != nil {
 
 			newZone := z.clone(missingDomain, z.name())
+			if newZone == nil {
+				continue
+			}
 
 			if auth != nil {
 				auth.addDelegationSignerLink(z, newZone.name())

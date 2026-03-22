@@ -46,10 +46,11 @@ func (z *zoneImpl) expired() bool {
 }
 
 func (z *zoneImpl) clone(name, parent string) zone {
-	// TODO: debugging
 	if canonicalName(name) == canonicalName(parent) || !dns.IsSubDomain(parent, name) {
 		Debug(fmt.Sprintf("child %s is not actually a child of parent: %s", name, parent))
-		panic("invalid clone")
+		// Return nil instead of panicking, since this can be triggered by adversarial DNS data.
+		// Callers should check for nil return.
+		return nil
 	}
 	return &zoneImpl{
 		zoneName:   canonicalName(name),

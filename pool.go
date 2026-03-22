@@ -52,35 +52,27 @@ func (pool *nameserverPool) countIPv6() uint32 {
 }
 
 func (pool *nameserverPool) getIPv4() exchanger {
-	if pool.hasIPv4() {
-		pool.updating.RLock()
-		count := uint32(len(pool.ipv4))
-		if count == 0 {
-			pool.updating.RUnlock()
-			return nil
-		}
-		ipv4Next := (pool.ipv4Next.Add(1) - 1) % count
-		ex := pool.ipv4[ipv4Next]
-		pool.updating.RUnlock()
-		return ex
+	pool.updating.RLock()
+	defer pool.updating.RUnlock()
+
+	count := uint32(len(pool.ipv4))
+	if count == 0 {
+		return nil
 	}
-	return nil
+	ipv4Next := (pool.ipv4Next.Add(1) - 1) % count
+	return pool.ipv4[ipv4Next]
 }
 
 func (pool *nameserverPool) getIPv6() exchanger {
-	if pool.hasIPv6() {
-		pool.updating.RLock()
-		count := uint32(len(pool.ipv6))
-		if count == 0 {
-			pool.updating.RUnlock()
-			return nil
-		}
-		ipv6Next := (pool.ipv6Next.Add(1) - 1) % count
-		ex := pool.ipv6[ipv6Next]
-		pool.updating.RUnlock()
-		return ex
+	pool.updating.RLock()
+	defer pool.updating.RUnlock()
+
+	count := uint32(len(pool.ipv6))
+	if count == 0 {
+		return nil
 	}
-	return nil
+	ipv6Next := (pool.ipv6Next.Add(1) - 1) % count
+	return pool.ipv6[ipv6Next]
 }
 
 //---

@@ -154,7 +154,7 @@ func (z *zoneImpl) dnskeys(ctx context.Context) ([]dns.RR, error) {
 		return nil, fmt.Errorf("%w for %s: %w", ErrFailedToGetDNSKEYs, z.zoneName, response.Err)
 	}
 	if response.IsEmpty() {
-		return nil, fmt.Errorf("%w for %s: reponse is empty", ErrFailedToGetDNSKEYs, z.zoneName)
+		return nil, fmt.Errorf("%w for %s: response is empty", ErrFailedToGetDNSKEYs, z.zoneName)
 	}
 
 	if len(response.Msg.Answer) == 0 {

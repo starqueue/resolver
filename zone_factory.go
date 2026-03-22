@@ -7,6 +7,10 @@ import (
 	"time"
 )
 
+// enrichSem limits concurrent pool enrichment goroutines to prevent
+// unbounded goroutine/socket creation when many zones need NS resolution.
+var enrichSem = make(chan struct{}, 20)
+
 func createZone(ctx context.Context, name, parent string, nameservers []*dns.NS, extra []dns.RR, exchanger exchanger) (zone, error) {
 	name = dns.CanonicalName(name)
 	parent = dns.CanonicalName(parent)
@@ -23,7 +27,13 @@ func createZone(ctx context.Context, name, parent string, nameservers []*dns.NS,
 	case PrimedButNeedsEnhancing:
 		if !LazyEnrichment {
 			go func() {
-				enrichPool(ctx, name, pool, exchanger)
+				select {
+				case enrichSem <- struct{}{}:
+					defer func() { <-enrichSem }()
+					enrichPool(ctx, name, pool, exchanger)
+				default:
+					// Too many concurrent enrichments — skip.
+				}
 			}()
 		}
 	case PoolPrimed:

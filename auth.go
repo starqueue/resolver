@@ -49,10 +49,11 @@ func (a *authenticator) close() {
 }
 
 func (a *authenticator) addDelegationSignerLink(z zone, qname string) {
+	a.processing.Add(1)
 	if a.finished.Load() {
+		a.processing.Done()
 		return
 	}
-	a.processing.Add(1)
 	go func() {
 		defer a.processing.Done()
 
@@ -71,10 +72,11 @@ func (a *authenticator) addDelegationSignerLink(z zone, qname string) {
 }
 
 func (a *authenticator) addResponse(z zone, msg *dns.Msg) error {
+	a.processing.Add(1)
 	if a.finished.Load() {
+		a.processing.Done()
 		return nil
 	}
-	a.processing.Add(1)
 	a.queue <- authenticatorInput{z, msg}
 	return nil
 }

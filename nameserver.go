@@ -22,6 +22,9 @@ type nameserver struct {
 
 	dnsClientFactory dnsClientFactory
 
+	udpClient dnsClient
+	tcpClient dnsClient
+
 	metricsLock         sync.Mutex
 	numberOfRequests    uint32
 	totalResponseTime   time.Duration
@@ -38,12 +41,28 @@ func (*nameserver) defaultDnsClientFactory(protocol string) dnsClient {
 	return &dns.Client{Net: protocol, Timeout: timeout}
 }
 
-func (nameserver *nameserver) exchange(ctx context.Context, m *dns.Msg) *Response {
-	factory := nameserver.defaultDnsClientFactory
-	if nameserver.dnsClientFactory != nil {
-		factory = nameserver.dnsClientFactory
+func (nameserver *nameserver) getClient(protocol string) dnsClient {
+	if protocol == "udp" {
+		if nameserver.udpClient == nil {
+			factory := nameserver.defaultDnsClientFactory
+			if nameserver.dnsClientFactory != nil {
+				factory = nameserver.dnsClientFactory
+			}
+			nameserver.udpClient = factory("udp")
+		}
+		return nameserver.udpClient
 	}
+	if nameserver.tcpClient == nil {
+		factory := nameserver.defaultDnsClientFactory
+		if nameserver.dnsClientFactory != nil {
+			factory = nameserver.dnsClientFactory
+		}
+		nameserver.tcpClient = factory("tcp")
+	}
+	return nameserver.tcpClient
+}
 
+func (nameserver *nameserver) exchange(ctx context.Context, m *dns.Msg) *Response {
 	zoneName := "unknown"
 	if z, ok := ctx.Value(ctxZoneName).(string); ok {
 		zoneName = z
@@ -58,7 +77,7 @@ func (nameserver *nameserver) exchange(ctx context.Context, m *dns.Msg) *Respons
 
 	r := Response{}
 	for _, protocol := range []string{"udp", "tcp"} {
-		client := factory(protocol)
+		client := nameserver.getClient(protocol)
 
 		r.Msg, r.Duration, r.Err = client.ExchangeContext(ctx, m, addr)
 

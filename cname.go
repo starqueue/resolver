@@ -61,9 +61,29 @@ func cname(ctx context.Context, qmsg *dns.Msg, r *Response, exchanger exchanger)
 		// The overall message is only authoritative if all answers are.
 		r.Msg.Authoritative = r.Msg.Authoritative && cnameRMsg.Msg.Authoritative
 
-		// Ensures we don't return 0 if any message was not 0. TODO: should this be more sophisticated?
-		r.Msg.Rcode = max(r.Msg.Rcode, cnameRMsg.Msg.Rcode)
+		// Combine Rcodes with severity awareness: ServFail (2) is more severe than NXDomain (3).
+		r.Msg.Rcode = combineRcodes(r.Msg.Rcode, cnameRMsg.Msg.Rcode)
 	}
 
 	return nil
+}
+
+// combineRcodes returns the more severe of two DNS Rcodes.
+// ServFail (2) is treated as more severe than NXDomain (3) despite having a lower numeric value.
+func combineRcodes(a, b int) int {
+	if a == b {
+		return a
+	}
+	if a == dns.RcodeSuccess {
+		return b
+	}
+	if b == dns.RcodeSuccess {
+		return a
+	}
+	// ServFail takes priority over other error codes.
+	if a == dns.RcodeServerFailure || b == dns.RcodeServerFailure {
+		return dns.RcodeServerFailure
+	}
+	// For other codes, use max as a reasonable default.
+	return max(a, b)
 }

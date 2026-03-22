@@ -132,14 +132,12 @@ func (z *zoneImpl) soa(ctx context.Context, name string) (*dns.SOA, error) {
 
 func (z *zoneImpl) dnskeys(ctx context.Context) ([]dns.RR, error) {
 	z.dnskeyLock.Lock()
+	defer z.dnskeyLock.Unlock()
 
 	// We base this check on the expiry only, as `z.dnskeyRecords` can be both nil and valid.
 	if !z.dnskeyExpiry.IsZero() && !z.dnskeyExpiry.Before(time.Now()) {
-		keys := z.dnskeyRecords
-		z.dnskeyLock.Unlock()
-		return keys, nil
+		return z.dnskeyRecords, nil
 	}
-	defer z.dnskeyLock.Unlock()
 
 	msg := new(dns.Msg)
 	msg.SetQuestion(dns.Fqdn(z.zoneName), dns.TypeDNSKEY)

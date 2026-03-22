@@ -63,6 +63,11 @@ func (resolver *Resolver) exchange(ctx context.Context, qmsg *dns.Msg) *Response
 	//----------------------------------------------------------------------------
 	// We setup the DNSSEC Authenticator
 
+	// Validate that the question section is non-empty.
+	if len(qmsg.Question) == 0 {
+		return newResponseError(fmt.Errorf("%w: message has no question section", ErrInternalError))
+	}
+
 	// If the DO flag is set, we create a DNSSEC Authenticator.
 	var auth *authenticator
 	if isSetDO(qmsg) {

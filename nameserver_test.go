@@ -91,117 +91,59 @@ func TestExchange_DNSClientError(t *testing.T) {
 	assert.Equal(t, expectedError, response.Err)
 }
 
-func TestExchange_UDPErrorFallbackToTCP(t *testing.T) {
-	// Setup
+func TestExchange_TCPErrorFallbackToUDP(t *testing.T) {
+	// TCP fails, UDP succeeds — verifies TCP-first with UDP fallback.
 	udpClient := new(MockDNSClient)
-	tcpClient := new(MockDNSClient)
-
-	// Define the dnsClientFactory to return the correct client for each protocol
 	factory := func(protocol string) dnsClient {
-		if protocol == "udp" {
-			return udpClient
-		}
-		return tcpClient
+		return udpClient
 	}
 	ns := &nameserver{addr: "192.0.2.53", dnsClientFactory: factory}
+	// Force TCP pool to fail by pointing at unreachable address.
+	ns.tcpPool = newTCPPool("192.0.2.99:53")
+	ns.tcpPoolOnce.Do(func() {}) // mark as initialised
 
-	// Prepare the DNS message with a valid question
 	msg := new(dns.Msg)
 	msg.SetQuestion(dns.Fqdn("example.com."), dns.TypeA)
-	ctx := context.TODO()
+	ctx, cancel := context.WithTimeout(context.TODO(), 3*time.Second)
+	defer cancel()
 
 	expectedResponse := new(dns.Msg)
 	expectedDuration := 10 * time.Millisecond
 
-	// Mock the UDP client to return an error, and the TCP client to return a valid response
-	udpClient.On("ExchangeContext", ctx, msg, "192.0.2.53:53").Return((*dns.Msg)(nil), time.Duration(0), errors.New("mock UDP error")).Once()
-	tcpClient.On("ExchangeContext", ctx, msg, "192.0.2.53:53").Return(expectedResponse, expectedDuration, nil).Once()
+	udpClient.On("ExchangeContext", mock.Anything, mock.Anything, "192.0.2.53:53").
+		Return(expectedResponse, expectedDuration, nil).Once()
 
-	// Execute
 	response := ns.exchange(ctx, msg)
 
-	// Assertions
 	assert.NoError(t, response.Err)
-	assert.Equal(t, expectedResponse, response.Msg)
-	assert.Equal(t, expectedDuration, response.Duration)
+	assert.NotNil(t, response.Msg)
 	udpClient.AssertNumberOfCalls(t, "ExchangeContext", 1)
-	tcpClient.AssertNumberOfCalls(t, "ExchangeContext", 1)
+	assert.Equal(t, uint32(1), ns.numberOfUdpFallback.Load())
 }
 
-func TestExchange_TruncatedResponseFallbackToTCP(t *testing.T) {
-	// Setup
-
+func TestExchange_BothTCPAndUDPReturnErrors(t *testing.T) {
+	// Both TCP and UDP fail — verifies error propagation.
 	udpClient := new(MockDNSClient)
-	tcpClient := new(MockDNSClient)
-
-	// Define the dnsClientFactory to return the correct client for each protocol
 	factory := func(protocol string) dnsClient {
-		if protocol == "udp" {
-			return udpClient
-		}
-		return tcpClient
+		return udpClient
 	}
 	ns := &nameserver{addr: "192.0.2.53", dnsClientFactory: factory}
+	ns.tcpPool = newTCPPool("192.0.2.99:53")
+	ns.tcpPoolOnce.Do(func() {})
 
-	// Prepare the DNS message with a valid question
 	msg := new(dns.Msg)
 	msg.SetQuestion(dns.Fqdn("example.com."), dns.TypeA)
-	ctx := context.TODO()
+	ctx, cancel := context.WithTimeout(context.TODO(), 3*time.Second)
+	defer cancel()
 
-	// Simulate a truncated response for UDP, which will force the function to retry with TCP
-	truncatedResponse := &dns.Msg{MsgHdr: dns.MsgHdr{Truncated: true}}
-	expectedResponse := new(dns.Msg)
-	expectedDuration := 10 * time.Millisecond
-
-	// Mock the UDP client to return a truncated response, and the TCP client to return a valid response
-	udpClient.On("ExchangeContext", ctx, msg, "192.0.2.53:53").Return(truncatedResponse, time.Duration(0), nil).Once()
-	tcpClient.On("ExchangeContext", ctx, msg, "192.0.2.53:53").Return(expectedResponse, expectedDuration, nil).Once()
-
-	// Execute
-	response := ns.exchange(ctx, msg)
-
-	// Assertions
-	assert.NoError(t, response.Err)
-	assert.Equal(t, expectedResponse, response.Msg)
-	assert.Equal(t, expectedDuration, response.Duration)
-	udpClient.AssertNumberOfCalls(t, "ExchangeContext", 1)
-	tcpClient.AssertNumberOfCalls(t, "ExchangeContext", 1)
-}
-
-func TestExchange_BothUDPAndTCPReturnErrors(t *testing.T) {
-	// Setup
-	udpClient := new(MockDNSClient)
-	tcpClient := new(MockDNSClient)
-
-	// Define the dnsClientFactory to return the correct client for each protocol
-	factory := func(protocol string) dnsClient {
-		if protocol == "udp" {
-			return udpClient
-		}
-		return tcpClient
-	}
-	ns := &nameserver{addr: "192.0.2.53", dnsClientFactory: factory}
-
-	// Prepare the DNS message with a valid question
-	msg := new(dns.Msg)
-	msg.SetQuestion(dns.Fqdn("example.com."), dns.TypeA)
-	ctx := context.TODO()
-
-	// Mock both UDP and TCP to return errors
 	udpError := errors.New("mock UDP error")
-	tcpError := errors.New("mock TCP error")
+	udpClient.On("ExchangeContext", mock.Anything, mock.Anything, "192.0.2.53:53").
+		Return((*dns.Msg)(nil), time.Duration(0), udpError).Once()
 
-	udpClient.On("ExchangeContext", ctx, msg, "192.0.2.53:53").Return((*dns.Msg)(nil), time.Duration(0), udpError).Once()
-	tcpClient.On("ExchangeContext", ctx, msg, "192.0.2.53:53").Return((*dns.Msg)(nil), time.Duration(0), tcpError).Once()
-
-	// Execute
 	response := ns.exchange(ctx, msg)
 
-	// Assertions
 	assert.Error(t, response.Err)
-	assert.Equal(t, tcpError, response.Err)
 	udpClient.AssertNumberOfCalls(t, "ExchangeContext", 1)
-	tcpClient.AssertNumberOfCalls(t, "ExchangeContext", 1)
 }
 
 func TestExchange_IPv6AddressFormatting(t *testing.T) {

@@ -16,8 +16,15 @@ import (
 
 // tcpPoolConns is the number of persistent TCP connections per nameserver.
 // Each connection supports pipelining — multiple queries in-flight
-// simultaneously, dispatched by DNS transaction ID.
-const tcpPoolConns = 4
+// simultaneously, dispatched by DNS transaction ID. With 2000 workers
+// and 13 TLD nameservers, each connection sees ~2000/(13*8) ≈ 19
+// concurrent queries — well within TCP pipelining capacity.
+const tcpPoolConns = 8
+
+// maxPendingPerConn limits concurrent in-flight queries per connection.
+// This prevents overloading authoritative servers and ensures queries
+// get timely responses. Excess queries wait briefly for a slot.
+const maxPendingPerConn = 100
 
 // tcpIdleTimeout is how long an idle TCP connection is kept open.
 const tcpIdleTimeout = 60 * time.Second
@@ -32,7 +39,7 @@ const tcpDialTimeout = 2 * time.Second
 // asynchronously by a dedicated reader goroutine.
 type tcpPool struct {
 	addr  string
-	conns [tcpPoolConns]*pipelinedConn
+	conns [tcpPoolConns]*pipelinedConn // 8 persistent connections
 	mu    sync.Mutex
 	next  uint32
 }
@@ -97,6 +104,7 @@ type pipelinedConn struct {
 	conn   net.Conn
 	writer *bufio.Writer
 	wmu    sync.Mutex // protects writes only
+	sem    chan struct{} // limits concurrent in-flight queries
 
 	pending sync.Map    // map[uint16]chan *dns.Msg
 	nextID  atomic.Uint32
@@ -108,6 +116,7 @@ func newPipelinedConn(conn net.Conn) *pipelinedConn {
 	pc := &pipelinedConn{
 		conn:   conn,
 		writer: bufio.NewWriterSize(conn, 4096),
+		sem:    make(chan struct{}, maxPendingPerConn),
 		done:   make(chan struct{}),
 	}
 	go pc.readLoop()
@@ -122,6 +131,15 @@ func (pc *pipelinedConn) alive() bool {
 func (pc *pipelinedConn) exchange(ctx context.Context, m *dns.Msg) (*dns.Msg, error) {
 	if pc.closed.Load() {
 		return nil, fmt.Errorf("connection closed")
+	}
+
+	// Limit concurrent in-flight queries per connection to avoid
+	// overwhelming the remote server and ensure timely responses.
+	select {
+	case pc.sem <- struct{}{}:
+		defer func() { <-pc.sem }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
 
 	// Assign a unique DNS transaction ID.

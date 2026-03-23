@@ -44,8 +44,38 @@ type tcpPool struct {
 	next  uint32
 }
 
+// globalTCPPools reuses TCP connection pools across nameserver objects
+// that share the same address. When a zone expires and is re-created,
+// the new nameserver objects reuse existing TCP connections instead of
+// dialing fresh ones.
+var (
+	globalPoolsMu sync.Mutex
+	globalPools   = make(map[string]*tcpPool)
+)
+
 func newTCPPool(addr string) *tcpPool {
 	return &tcpPool{addr: addr}
+}
+
+func getTCPPool(addr string) *tcpPool {
+	globalPoolsMu.Lock()
+	defer globalPoolsMu.Unlock()
+	if p, ok := globalPools[addr]; ok {
+		return p
+	}
+	p := &tcpPool{addr: addr}
+	globalPools[addr] = p
+	return p
+}
+
+// preDial establishes TCP connections in the background so they're
+// ready when the first query arrives. Called during zone creation.
+func (p *tcpPool) preDial() {
+	go func() {
+		for i := 0; i < tcpPoolConns; i++ {
+			p.getConn(i) // establishes connection if not alive
+		}
+	}()
 }
 
 // Exchange sends a DNS query over a pipelined TCP connection and waits

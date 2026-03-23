@@ -39,7 +39,9 @@ type nameserver struct {
 }
 
 func (ns *nameserver) initTCPPool() {
-	ns.tcpPool = newTCPPool(net.JoinHostPort(ns.addr, "53"))
+	addr := net.JoinHostPort(ns.addr, "53")
+	ns.tcpPool = getTCPPool(addr)
+	ns.tcpPool.preDial()
 }
 
 func (ns *nameserver) initUDPClient() {

@@ -84,24 +84,17 @@ func TestCreateZone_SuccessWithEnrichment(t *testing.T) {
 		Duration: 10 * time.Millisecond,
 	})
 
-	// Execute — with no glue records, createZone now returns an error
-	// immediately and enriches in the background (non-blocking).
-	// The query retries and finds the zone enriched on second attempt.
+	// Execute
 	z, err := createZone(ctx, "example.com.", "com.", nameservers, extra, mockExchanger)
 
-	assert.Error(t, err) // expected: enriching in background
-	assert.Nil(t, z)
-	assert.ErrorIs(t, err, ErrFailedCreatingZoneAndPool)
+	// Assertions
+	assert.NoError(t, err)
+	assert.NotNil(t, z)
+	assert.Equal(t, "example.com.", z.name())
 
-	// Wait briefly for background enrichment to complete.
-	time.Sleep(100 * time.Millisecond)
-
-	// Second attempt should succeed now that enrichment has completed.
-	z2, err2 := createZone(ctx, "example.com.", "com.", nameservers, extra, mockExchanger)
-	// Note: may still fail if enrichment hasn't populated the pool yet,
-	// which is expected — the resolver retries on next query.
-	_ = z2
-	_ = err2
+	pool, ok := z.(*zoneImpl).pool.(*nameserverPool)
+	assert.True(t, ok)
+	assert.Equal(t, pool.status(), PoolPrimed)
 }
 
 func TestCreateZone_PoolCreationFailsWithEnrichment(t *testing.T) {
@@ -128,11 +121,8 @@ func TestCreateZone_PoolCreationFailsWithEnrichment(t *testing.T) {
 	// Execute
 	z, err := createZone(ctx, "example.com.", "com.", nameservers, extra, mockExchanger)
 
-	// With non-blocking enrichment, the error is now ErrFailedCreatingZoneAndPool
-	// because the zone can't be created without IP addresses. Enrichment
-	// happens in the background.
 	assert.Nil(t, z)
-	assert.ErrorIs(t, err, ErrFailedCreatingZoneAndPool)
+	assert.ErrorIs(t, err, ErrFailedEnrichingPool)
 }
 
 // TestCreateZone_SuccessWithOptionalEnrichment Has one glue record returned, so tried to enrich to find the addresses of the other two.

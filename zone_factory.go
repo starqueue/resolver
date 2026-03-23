@@ -39,19 +39,13 @@ func createZone(ctx context.Context, name, parent string, nameservers []*dns.NS,
 	case PoolPrimed:
 		// Ready to use.
 	case PoolHasHostnamesButNoIpAddresses:
-		// Non-blocking: enrich in background instead of blocking the query.
-		// The query will fail on this zone but retry will find the zone
-		// enriched. This eliminates the 3-second blocking enrichPool call
-		// that was the main cause of P95 latency spikes.
-		go func() {
-			select {
-			case enrichSem <- struct{}{}:
-				defer func() { <-enrichSem }()
-				enrichPool(ctx, name, pool, exchanger)
-			default:
-			}
-		}()
-		return nil, fmt.Errorf("%w for [%s]: nameserver pool has no IP addresses yet (enriching in background)", ErrFailedCreatingZoneAndPool, name)
+		// Block until enrichment succeeds. The query waits here but gets
+		// a working zone. The parallel enrichPool resolves hostnames
+		// concurrently so this is typically ~200ms instead of 1.2s.
+		err := enrichPool(ctx, name, pool, exchanger)
+		if err != nil {
+			return nil, err
+		}
 	default:
 		return nil, fmt.Errorf("%w for [%s]: the nameserver pool is empty and we have no hostnames to enrich", ErrFailedCreatingZoneAndPool, name)
 	}

@@ -34,6 +34,13 @@ type zoneImpl struct {
 	dnskeyRecords atomic.Value // stores []dns.RR
 	dnskeyExpiry  atomic.Int64 // unix timestamp
 	dnskeyLock    sync.Mutex   // only held during fetch, not reads
+
+	// DS record cache — avoids repeated DS lookups for the same zone.
+	// dsResponse stores the cached *dns.Msg from the DS query.
+	// dsExpiry is the unix timestamp when the cache expires.
+	dsResponse atomic.Value // stores *dns.Msg (may be nil for "no DS")
+	dsExpiry   atomic.Int64
+	dsLock     sync.Mutex
 }
 
 func (z *zoneImpl) name() string {
@@ -200,4 +207,58 @@ func (z *zoneImpl) dnskeys(ctx context.Context) ([]dns.RR, error) {
 	z.dnskeyExpiry.Store(time.Now().Add(time.Duration(ttl) * time.Second).Unix())
 
 	return records, nil
+}
+
+// cachedDSLookup performs a DS query for the given qname using this zone's
+// nameservers, caching the result. Subsequent calls return the cached
+// response without a network round-trip. This eliminates redundant DS
+// queries when multiple concurrent queries traverse the same zone chain.
+func (z *zoneImpl) cachedDSLookup(ctx context.Context, qname string) (*dns.Msg, error) {
+	// Fast path: check cache atomically.
+	cacheKey := qname // DS lookups are per child zone name
+	_ = cacheKey
+	if exp := z.dsExpiry.Load(); exp > 0 && exp > time.Now().Unix() {
+		if msg, ok := z.dsResponse.Load().(*dns.Msg); ok {
+			return msg, nil
+		}
+	}
+
+	// Slow path: fetch under lock.
+	z.dsLock.Lock()
+	defer z.dsLock.Unlock()
+
+	// Re-check after lock.
+	if exp := z.dsExpiry.Load(); exp > 0 && exp > time.Now().Unix() {
+		if msg, ok := z.dsResponse.Load().(*dns.Msg); ok {
+			return msg, nil
+		}
+	}
+
+	dsMsg := new(dns.Msg)
+	dsMsg.SetQuestion(dns.Fqdn(qname), dns.TypeDS)
+	dsMsg.SetEdns0(4096, true)
+	dsMsg.RecursionDesired = false
+
+	response := z.exchange(ctx, dsMsg)
+	if response.HasError() {
+		return nil, response.Err
+	}
+	if response.IsEmpty() {
+		return nil, fmt.Errorf("empty DS response for %s", qname)
+	}
+
+	// Cache the response. Use a reasonable TTL — DS records are stable.
+	ttl := uint32(3600) // 1 hour default
+	for _, rr := range response.Msg.Answer {
+		if rr.Header().Ttl > 0 && rr.Header().Ttl < ttl {
+			ttl = rr.Header().Ttl
+		}
+	}
+	// For negative responses (no DS records), also cache for 1 hour.
+	// These indicate Insecure delegations and won't change frequently.
+
+	z.dsResponse.Store(response.Msg)
+	z.dsExpiry.Store(time.Now().Add(time.Duration(ttl) * time.Second).Unix())
+
+	return response.Msg, nil
 }

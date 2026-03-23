@@ -64,23 +64,54 @@ func (a *authenticator) addDelegationSignerLink(z zone, qname string) {
 	go func() {
 		defer a.processing.Done()
 
-		// Pre-fetch DNSKEY records in a tracked goroutine so it completes
-		// before the authenticator is closed.
-		a.processing.Add(1)
-		go func() {
-			defer a.processing.Done()
-			z.dnskeys(a.ctx)
-		}()
-
-		dsMsg := new(dns.Msg)
-		dsMsg.SetQuestion(dns.Fqdn(qname), dns.TypeDS)
-		dsMsg.SetEdns0(4096, true)
-		dsMsg.RecursionDesired = false
-		response := z.exchange(a.ctx, dsMsg)
-		if !response.IsEmpty() && !response.HasError() {
-			a.processing.Add(1)
-			a.queue <- authenticatorInput{z, response.Msg}
+		// Use cached DS lookup to avoid redundant network round-trips.
+		// The zone caches DS responses so concurrent queries for the
+		// same zone chain don't each make separate DS queries.
+		zi, ok := z.(*zoneImpl)
+		var dsMsg *dns.Msg
+		var dsErr error
+		if ok {
+			dsMsg, dsErr = zi.cachedDSLookup(a.ctx, qname)
+		} else {
+			// Fallback for non-zoneImpl (e.g. mocks in tests).
+			msg := new(dns.Msg)
+			msg.SetQuestion(dns.Fqdn(qname), dns.TypeDS)
+			msg.SetEdns0(4096, true)
+			msg.RecursionDesired = false
+			response := z.exchange(a.ctx, msg)
+			if !response.IsEmpty() && !response.HasError() {
+				dsMsg = response.Msg
+			}
 		}
+
+		if dsErr != nil || dsMsg == nil {
+			return
+		}
+
+		// Check if DS records are present. If absent, this delegation
+		// is Insecure — no need to fetch DNSKEY or validate signatures
+		// for this zone or its children.
+		hasDS := false
+		for _, rr := range dsMsg.Answer {
+			if rr.Header().Rrtype == dns.TypeDS {
+				hasDS = true
+				break
+			}
+		}
+
+		if hasDS {
+			// DS records exist — pre-fetch DNSKEY for signature verification.
+			a.processing.Add(1)
+			go func() {
+				defer a.processing.Done()
+				z.dnskeys(a.ctx)
+			}()
+		}
+		// If no DS records, skip DNSKEY fetch — the zone is Insecure
+		// and no cryptographic verification is needed.
+
+		a.processing.Add(1)
+		a.queue <- authenticatorInput{z, dsMsg}
 	}()
 }
 

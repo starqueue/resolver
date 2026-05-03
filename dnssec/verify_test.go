@@ -8,8 +8,8 @@ import (
 	"testing"
 )
 
-var initErr = errors.New("init error")
-var testErr = errors.New("test error")
+var errInit = errors.New("init error")
+var errTest = errors.New("test error")
 
 // We'll use a unique state so we can ensure it's coming from a mock.
 const initState = AuthenticationResult(^uint8(0) - 1)
@@ -18,19 +18,19 @@ const testState = AuthenticationResult(^uint8(0))
 func getVerifier() verifier {
 	return verifier{
 		verifyDNSKEYs: func(ctx context.Context, r *result, keys []dns.RR, dsRecordsFromParent []*dns.DS) (AuthenticationResult, error) {
-			return initState, initErr
+			return initState, errInit
 		},
 		verifyRRSETs: func(ctx context.Context, r *result, keys []*dns.DNSKEY) (AuthenticationResult, error) {
-			return initState, initErr
+			return initState, errInit
 		},
 		validateDelegatingResponse: func(ctx context.Context, r *result) (AuthenticationResult, error) {
-			return initState, initErr
+			return initState, errInit
 		},
 		validatePositiveResponse: func(ctx context.Context, r *result) (AuthenticationResult, error) {
-			return initState, initErr
+			return initState, errInit
 		},
 		validateNegativeResponse: func(ctx context.Context, r *result) (AuthenticationResult, error) {
-			return initState, initErr
+			return initState, errInit
 		},
 	}
 }
@@ -100,7 +100,7 @@ func TestVerify_VerifyGetDNSKEYRecords(t *testing.T) {
 	v.verifyDNSKEYs = func(ctx context.Context, r *result, keys []dns.RR, dsRecordsFromParent []*dns.DS) (AuthenticationResult, error) {
 		keysSeen = keys
 		dsRecordsFromParentSeen = dsRecordsFromParent
-		return testState, testErr
+		return testState, errTest
 	}
 
 	_, _, _ = v.verify(ctx, zone, msg, dsSet)
@@ -130,11 +130,11 @@ func TestVerify_VerifyDNSKEYsAndRRSETs(t *testing.T) {
 
 	// Test that when Unknown and an error is returned, that error should be returned to us.
 	v.verifyDNSKEYs = func(ctx context.Context, r *result, keys []dns.RR, dsRecordsFromParent []*dns.DS) (AuthenticationResult, error) {
-		return Unknown, testErr
+		return Unknown, errTest
 	}
 
 	state, r, err = v.verify(ctx, zone, msg, dsSet)
-	assert.ErrorIs(t, err, testErr)
+	assert.ErrorIs(t, err, errTest)
 	assert.NotNil(t, r)
 	assert.Equal(t, Unknown, state)
 
@@ -162,11 +162,11 @@ func TestVerify_VerifyDNSKEYsAndRRSETs(t *testing.T) {
 	// If Unknown and an error is returned, we should get those values back.
 	v.verifyRRSETs = func(ctx context.Context, r *result, keys []*dns.DNSKEY) (AuthenticationResult, error) {
 		called = true
-		return Unknown, testErr
+		return Unknown, errTest
 	}
 
 	state, r, err = v.verify(ctx, zone, msg, dsSet)
-	assert.ErrorIs(t, err, testErr)
+	assert.ErrorIs(t, err, errTest)
 	assert.NotNil(t, r)
 	assert.Equal(t, Unknown, state)
 }
@@ -199,11 +199,11 @@ func TestVerify_VerifyDelegatingResponse(t *testing.T) {
 	called := false
 	v.validateDelegatingResponse = func(ctx context.Context, r *result) (AuthenticationResult, error) {
 		called = true
-		return testState, testErr
+		return testState, errTest
 	}
 
 	state, r, err := v.verify(ctx, zone, msg, dsSet)
-	assert.ErrorIs(t, err, testErr)
+	assert.ErrorIs(t, err, errTest)
 	assert.NotNil(t, r)
 	assert.Equal(t, testState, state)
 	assert.True(t, called)
@@ -220,10 +220,10 @@ func TestVerify_VerifyDelegatingResponse(t *testing.T) {
 	called = false
 	v.validateDelegatingResponse = func(ctx context.Context, r *result) (AuthenticationResult, error) {
 		called = true
-		return testState, testErr
+		return testState, errTest
 	}
 
-	v.verify(ctx, zone, msg, dsSet)
+	_, _, _ = v.verify(ctx, zone, msg, dsSet) // assertion is on the side-effect `called`
 	assert.False(t, called)
 
 	//---
@@ -236,10 +236,10 @@ func TestVerify_VerifyDelegatingResponse(t *testing.T) {
 	called = false
 	v.validateDelegatingResponse = func(ctx context.Context, r *result) (AuthenticationResult, error) {
 		called = true
-		return testState, testErr
+		return testState, errTest
 	}
 
-	v.verify(ctx, zone, msg, dsSet)
+	_, _, _ = v.verify(ctx, zone, msg, dsSet) // assertion is on the side-effect `called`
 	assert.False(t, called)
 
 }
@@ -260,11 +260,11 @@ func TestVerify_VerifyPositiveResponse(t *testing.T) {
 	called := false
 	v.validatePositiveResponse = func(ctx context.Context, r *result) (AuthenticationResult, error) {
 		called = true
-		return testState, testErr
+		return testState, errTest
 	}
 
 	state, r, err := v.verify(ctx, zone, msg, dsSet)
-	assert.ErrorIs(t, err, testErr)
+	assert.ErrorIs(t, err, errTest)
 	assert.NotNil(t, r)
 	assert.Equal(t, testState, state)
 	assert.True(t, called)
@@ -279,10 +279,10 @@ func TestVerify_VerifyPositiveResponse(t *testing.T) {
 	called = false
 	v.validatePositiveResponse = func(ctx context.Context, r *result) (AuthenticationResult, error) {
 		called = true
-		return testState, testErr
+		return testState, errTest
 	}
 
-	v.verify(ctx, zone, msg, dsSet)
+	_, _, _ = v.verify(ctx, zone, msg, dsSet) // assertion is on the side-effect `called`
 	assert.False(t, called)
 
 	//---
@@ -295,10 +295,10 @@ func TestVerify_VerifyPositiveResponse(t *testing.T) {
 	called = false
 	v.validatePositiveResponse = func(ctx context.Context, r *result) (AuthenticationResult, error) {
 		called = true
-		return testState, testErr
+		return testState, errTest
 	}
 
-	v.verify(ctx, zone, msg, dsSet)
+	_, _, _ = v.verify(ctx, zone, msg, dsSet) // assertion is on the side-effect `called`
 	assert.False(t, called)
 
 	//---
@@ -311,10 +311,10 @@ func TestVerify_VerifyPositiveResponse(t *testing.T) {
 	called = false
 	v.validatePositiveResponse = func(ctx context.Context, r *result) (AuthenticationResult, error) {
 		called = true
-		return testState, testErr
+		return testState, errTest
 	}
 
-	v.verify(ctx, zone, msg, dsSet)
+	_, _, _ = v.verify(ctx, zone, msg, dsSet) // assertion is on the side-effect `called`
 	assert.False(t, called)
 
 }
@@ -333,11 +333,11 @@ func TestVerify_VerifyNegativeResponse(t *testing.T) {
 	called := false
 	v.validateNegativeResponse = func(ctx context.Context, r *result) (AuthenticationResult, error) {
 		called = true
-		return testState, testErr
+		return testState, errTest
 	}
 
 	state, r, err := v.verify(ctx, zone, msg, dsSet)
-	assert.ErrorIs(t, err, testErr)
+	assert.ErrorIs(t, err, errTest)
 	assert.NotNil(t, r)
 	assert.Equal(t, testState, state)
 	assert.True(t, called)

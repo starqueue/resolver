@@ -149,16 +149,6 @@ func removeRecordsOfType(rr []dns.RR, t uint16) []dns.RR {
 	return r
 }
 
-func extractRecordsOfType(rr []dns.RR, t uint16) []dns.RR {
-	r := make([]dns.RR, 0, len(rr))
-	for _, record := range rr {
-		if record.Header().Rrtype == t {
-			r = append(r, record)
-		}
-	}
-	return r
-}
-
 func recordsOfNameAndTypeExist(rr []dns.RR, name string, t uint16) bool {
 	for _, record := range rr {
 		if record.Header().Rrtype == t && record.Header().Name == name {
@@ -166,8 +156,4 @@ func recordsOfNameAndTypeExist(rr []dns.RR, name string, t uint16) bool {
 		}
 	}
 	return false
-}
-
-func namesEqual(s1, s2 string) bool {
-	return dns.CanonicalName(s1) == dns.CanonicalName(s2)
 }

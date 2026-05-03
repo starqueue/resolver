@@ -104,7 +104,7 @@ func (a *authenticator) addDelegationSignerLink(z zone, qname string) {
 			a.processing.Add(1)
 			go func() {
 				defer a.processing.Done()
-				z.dnskeys(a.ctx)
+				_, _ = z.dnskeys(a.ctx) // prefetch: error surfaces when the authenticator later requires the keys
 			}()
 		}
 		// If no DS records, skip DNSKEY fetch — the zone is Insecure

@@ -33,7 +33,6 @@ type nameserverPool struct {
 	ipv6Count   atomic.Uint32
 
 	updating sync.Mutex // protects enrich writes only
-	enriched sync.Once
 
 	expires atomic.Int64
 }

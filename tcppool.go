@@ -73,7 +73,7 @@ func getTCPPool(addr string) *tcpPool {
 func (p *tcpPool) preDial() {
 	go func() {
 		for i := 0; i < tcpPoolConns; i++ {
-			p.getConn(i) // establishes connection if not alive
+			_, _ = p.getConn(i) // best-effort pre-dial; failures will be retried on first real Exchange
 		}
 	}()
 }
@@ -117,7 +117,7 @@ func (p *tcpPool) getConn(idx int) (*pipelinedConn, error) {
 	// Another goroutine may have created a connection while we dialed.
 	if existing := p.conns[idx]; existing != nil && existing.alive() {
 		p.mu.Unlock()
-		conn.Close()
+		_ = conn.Close() // discarding losing-race connection: close error is irrelevant
 		return existing, nil
 	}
 	p.conns[idx] = pc
@@ -133,10 +133,10 @@ func (p *tcpPool) getConn(idx int) (*pipelinedConn, error) {
 type pipelinedConn struct {
 	conn   net.Conn
 	writer *bufio.Writer
-	wmu    sync.Mutex // protects writes only
+	wmu    sync.Mutex    // protects writes only
 	sem    chan struct{} // limits concurrent in-flight queries
 
-	pending sync.Map    // map[uint16]chan *dns.Msg
+	pending sync.Map // map[uint16]chan *dns.Msg
 	nextID  atomic.Uint32
 	closed  atomic.Bool
 	done    chan struct{}
@@ -195,9 +195,9 @@ func (pc *pipelinedConn) exchange(ctx context.Context, m *dns.Msg) (*dns.Msg, er
 	// Set write deadline from context.
 	deadline, ok := ctx.Deadline()
 	if ok {
-		pc.conn.SetWriteDeadline(deadline)
+		_ = pc.conn.SetWriteDeadline(deadline) // network setup: error surfaces on the subsequent Write
 	} else {
-		pc.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_ = pc.conn.SetWriteDeadline(time.Now().Add(5 * time.Second)) // network setup: error surfaces on the subsequent Write
 	}
 
 	var lenBuf [2]byte
@@ -239,12 +239,12 @@ func (pc *pipelinedConn) readLoop() {
 	var lenBuf [2]byte
 	for {
 		// Read 2-byte length prefix.
-		pc.conn.SetReadDeadline(time.Now().Add(tcpIdleTimeout))
+		_ = pc.conn.SetReadDeadline(time.Now().Add(tcpIdleTimeout)) // network setup: error surfaces on the subsequent Read
 		if _, err := io.ReadFull(pc.conn, lenBuf[:]); err != nil {
 			return
 		}
 		msgLen := binary.BigEndian.Uint16(lenBuf[:])
-		if msgLen == 0 || msgLen > 65535 {
+		if msgLen == 0 {
 			return
 		}
 
@@ -270,7 +270,7 @@ func (pc *pipelinedConn) readLoop() {
 // close shuts down the connection and wakes all pending callers.
 func (pc *pipelinedConn) close() {
 	if pc.closed.CompareAndSwap(false, true) {
-		pc.conn.Close()
+		_ = pc.conn.Close() // shutting down: close error is irrelevant
 		close(pc.done)
 		// Wake all pending callers with nil (they'll get an error).
 		pc.pending.Range(func(key, value any) bool {

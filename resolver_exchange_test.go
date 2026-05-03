@@ -587,7 +587,7 @@ func TestResolver_CheckForMissingZones_NoMissingZones(t *testing.T) {
 	ctx := context.Background()
 
 	d := newDomain(qmsg.Question[0].Name)
-	d.windTo("www.example.com.")
+	_ = d.windTo("www.example.com.") // test setup: target is the qname itself, so cannot fail
 
 	// If the Owner Name of a record is the direct descendant of the zone, there are no missing zones.
 	// We expect the zone we passed in, back.
@@ -621,7 +621,7 @@ func TestResolver_CheckForMissingZones_WithMissingZones(t *testing.T) {
 	ctx := context.Background()
 
 	d := newDomain(qmsg.Question[0].Name)
-	d.windTo("d.example.com.")
+	_ = d.windTo("d.example.com.") // test setup: target is a known label of the qname, so cannot fail
 
 	// If the Owner Name of a record is a descendant, but _not_ a direct descendant, then the labels in the delta are
 	// potentially zones that have been skipped over. We expect the code to validate each by checking if each

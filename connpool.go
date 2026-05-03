@@ -57,7 +57,7 @@ func (p *pooledUDPClient) ExchangeContext(ctx context.Context, m *dns.Msg, addr 
 	// Ensure we have a live connection to this address.
 	if pc.conn == nil || pc.addr != addr {
 		if pc.conn != nil {
-			pc.conn.Close()
+			_ = pc.conn.Close() // discarding stale connection: close error is irrelevant
 		}
 		conn, err := dialUDP(addr, p.timeout)
 		if err != nil {
@@ -72,22 +72,22 @@ func (p *pooledUDPClient) ExchangeContext(ctx context.Context, m *dns.Msg, addr 
 	if !ok {
 		deadline = time.Now().Add(p.timeout)
 	}
-	pc.conn.SetDeadline(deadline)
+	_ = pc.conn.SetDeadline(deadline) // network setup: error surfaces on the subsequent Write/Read
 
 	start := time.Now()
 	err := pc.conn.WriteMsg(m)
 	if err != nil {
 		// Connection may be stale — close and retry once.
-		pc.conn.Close()
+		_ = pc.conn.Close() // discarding stale connection: close error is irrelevant
 		conn, dialErr := dialUDP(addr, p.timeout)
 		if dialErr != nil {
 			pc.conn = nil
 			return nil, time.Since(start), err
 		}
 		pc.conn = conn
-		pc.conn.SetDeadline(deadline)
+		_ = pc.conn.SetDeadline(deadline) // network setup: error surfaces on the subsequent Write/Read
 		if err = pc.conn.WriteMsg(m); err != nil {
-			pc.conn.Close()
+			_ = pc.conn.Close() // discarding broken connection: close error is irrelevant
 			pc.conn = nil
 			return nil, time.Since(start), err
 		}
@@ -97,7 +97,7 @@ func (p *pooledUDPClient) ExchangeContext(ctx context.Context, m *dns.Msg, addr 
 	duration := time.Since(start)
 	if err != nil {
 		// Close broken connection so next call creates a fresh one.
-		pc.conn.Close()
+		_ = pc.conn.Close() // discarding broken connection: close error is irrelevant
 		pc.conn = nil
 		return nil, duration, err
 	}

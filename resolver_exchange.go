@@ -114,7 +114,7 @@ func (resolver *Resolver) exchange(ctx context.Context, qmsg *dns.Msg) *Response
 	var response *Response
 
 	// We track the last zone, as that's were we pass the query for the next label.
-	var z zone = knownZones[0]
+	z := knownZones[0]
 
 	// Prefetch: if we already know multiple zones in the chain, start
 	// DNSKEY lookups for all of them in parallel so they're cached by
@@ -122,7 +122,9 @@ func (resolver *Resolver) exchange(ctx context.Context, qmsg *dns.Msg) *Response
 	// validation work with the serial zone resolution.
 	if auth != nil && len(knownZones) > 1 {
 		for _, kz := range knownZones {
-			go kz.dnskeys(ctx)
+			go func() {
+				_, _ = kz.dnskeys(ctx) // prefetch: error surfaces when the authenticator later requires the keys
+			}()
 		}
 	}
 
@@ -163,7 +165,9 @@ func (resolver *Resolver) resolveLabel(ctx context.Context, d *domain, z zone, q
 		// will serialize. The goroutine is fire-and-forget here since the
 		// authenticator's addDelegationSignerLink also fetches DNSKEY records
 		// via a tracked goroutine.
-		go z.dnskeys(ctx)
+		go func() {
+			_, _ = z.dnskeys(ctx) // prefetch: error surfaces when the authenticator later requires the keys
+		}()
 	}
 
 	response := z.exchange(ctx, qmsg)
@@ -183,7 +187,7 @@ func (resolver *Resolver) resolveLabel(ctx context.Context, d *domain, z zone, q
 	//---
 
 	if auth != nil {
-		auth.addResponse(z, response.Msg)
+		_ = auth.addResponse(z, response.Msg) // currently always nil; error path reserved for future use
 	}
 
 	if len(response.Msg.Answer) == 0 && recordsOfTypeExist(response.Msg.Ns, dns.TypeNS) && !recordsOfTypeExist(response.Msg.Ns, dns.TypeSOA) {
@@ -367,7 +371,7 @@ func (resolver *Resolver) finaliseResponse(ctx context.Context, auth *authentica
 	}
 
 	// We'll consider both of these 'normal' responses.
-	if !(response.Msg.Rcode == dns.RcodeSuccess || response.Msg.Rcode == dns.RcodeNameError) {
+	if response.Msg.Rcode != dns.RcodeSuccess && response.Msg.Rcode != dns.RcodeNameError {
 		response.Err = fmt.Errorf("unsuccessful response code %s (%d)", RcodeToString(response.Msg.Rcode), response.Msg.Rcode)
 	}
 

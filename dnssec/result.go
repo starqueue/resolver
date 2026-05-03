@@ -84,10 +84,10 @@ func (a *Authenticator) Result() (AuthenticationResult, DenialOfExistenceState, 
 		return Insecure, last.denialOfExistence, last.err
 	case NsecNxDomain, Nsec3NxDomain, NsecNoData, Nsec3NoData:
 		return Secure, last.denialOfExistence, last.err
-	default:
-		return Bogus, last.denialOfExistence, last.err
 	case NotFound, NsecWildcard, Nsec3Wildcard:
 		// We carry on...
+	default:
+		return Bogus, last.denialOfExistence, last.err
 	}
 
 	//-----------------------------------------------------------

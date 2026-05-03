@@ -37,7 +37,7 @@ func (zones *zones) getZoneList(name string) []zone {
 	for _, idx := range indexes {
 		zname := name[idx:]
 
-		z, _ := zones.zones[zname]
+		z := zones.zones[zname]
 
 		// Skip the zone if missing
 		if z == nil || z.expired() {
@@ -66,7 +66,7 @@ func (zones *zones) get(name string) zone {
 		return nil
 	}
 
-	z, _ := zones.zones[name]
+	z := zones.zones[name]
 
 	if z != nil && z.expired() {
 		// We could remove the expired zone from the map here, but realistically it's about to be replaced,

@@ -30,7 +30,7 @@ func createZone(ctx context.Context, name, parent string, nameservers []*dns.NS,
 				select {
 				case enrichSem <- struct{}{}:
 					defer func() { <-enrichSem }()
-					enrichPool(ctx, name, pool, exchanger)
+					_ = enrichPool(ctx, name, pool, exchanger) // background lazy enrichment: error surfaces on next status() check
 				default:
 					// Too many concurrent enrichments — skip.
 				}
